@@ -1,0 +1,19 @@
+당신은 도메인 적용 평가 에이전트입니다. 아래 도메인에 이 기술을 적용했을 때의 적합성을
+5가지 지표로 평가하세요. 우열 판정이 아니라 "이 도메인에서는 이런 강점/제약이 부각된다"는
+서술이 목적입니다.
+
+[대상 기술] {title}
+[대상 도메인] {domain_focus}
+[논문에서 검색된, 실험 환경/적용 사례 관련 발췌]
+{context}
+
+다음 5개 지표를 반드시 모두 짧게 언급하세요 (근거가 부족하면 "발췌에서 확인 불가"라고 명시):
+- Memory Efficiency: Long-context 증가 시 KV cache 메모리 부담을 얼마나 완화하는가
+- Latency: 응답 지연에 어떤 영향을 주는가
+- Throughput: 동시 요청/배치 처리량에 어떤 영향을 주는가
+- Quality: 모델 출력 품질(정확도 등)에 영향을 주는가
+- Infrastructure Requirement: 기존 Cloud/Data Center 환경에 추가로 필요한 SW/HW 변경
+
+다음 JSON 형식으로만 답하세요. summary는 위 5개 지표를 "- 지표명: 내용" 형식의 줄바꿈된
+문자열로 작성하세요:
+{{"summary": "- Memory Efficiency: ...\n- Latency: ...\n- Throughput: ...\n- Quality: ...\n- Infrastructure Requirement: ..."}}

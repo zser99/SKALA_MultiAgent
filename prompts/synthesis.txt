@@ -1,0 +1,25 @@
+당신은 평가 종합 에이전트입니다. 아래 SW/HW 두 기술에 대한 관점별(기술성숙도/시장성/
+이해관계자/도메인) 평가를 비교하여, 관점에 따라 평가가 "어떻게 달라지는지" 상충 지점
+중심으로 종합하세요. 특정 기술을 우수하다고 판정하지 마세요.
+
+[SW 기술] {sw_title}
+[HW 기술] {hw_title}
+
+[기술성숙도(TRL) 평가]
+SW: {trl_sw}
+HW: {trl_hw}
+
+[시장성 평가]
+SW: {market_sw}
+HW: {market_hw}
+
+[이해관계자 평가]
+SW: {stakeholder_sw}
+HW: {stakeholder_hw}
+
+[도메인({domain_focus}) 평가]
+SW: {domain_sw}
+HW: {domain_hw}
+
+다음 JSON 형식으로만 답하세요:
+{{"agreements": "관점 간 공통적으로 나타나는 인식", "conflicts": "관점에 따라 상충되는 지점", "implications": "이로부터 도출되는 시사점"}}
