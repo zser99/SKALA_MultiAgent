@@ -22,6 +22,11 @@ DOMAIN_REFERENCES = {
         "file": "LongBench.pdf",
         "title": "LongBench",
     },
+    "latency": {
+        "id": "domain_distserve",
+        "file": "DistServe.pdf",
+        "title": "DistServe",
+    },
 }
 
 
@@ -101,8 +106,9 @@ def domain_node(state: dict) -> dict:
     for criterion, spec in metric_specs.items():
         analysis["criteria"][criterion] = {}
         description = spec["query"]
-        reference = DOMAIN_REFERENCES["quality" if criterion == "quality" else "serving"]
-        reference_store = domain_vectorstores["quality" if criterion == "quality" else "serving"]
+        reference_name = criterion if criterion in ("quality", "latency") else "serving"
+        reference = DOMAIN_REFERENCES[reference_name]
+        reference_store = domain_vectorstores[reference_name]
         domain_docs = search(
             reference_store, f"{domain} {description}", k=5 if transform else 3,
             transform=transform, title=reference["title"],
