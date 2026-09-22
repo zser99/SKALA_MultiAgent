@@ -14,6 +14,11 @@ LLM은 토큰 생성 과정에서 이전 Key·Value를 KV Cache에 저장해 연
 하지만 문맥 길이와 동시 요청이 증가하면 KV Cache가 GPU HBM을 빠르게 점유하면서
 메모리 용량과 데이터 이동이 추론 병목으로 바뀝니다.
 
+Cloud/Data Center Long-context LLM Serving은 긴 문맥과 높은 동시성으로 KV Cache의
+메모리 용량 및 데이터 이동 병목이 크게 나타나는 환경입니다. 또한 KIVI의 소프트웨어
+압축 효과와 ITME의 하드웨어 메모리 확장 효과를 Memory·Latency·Throughput·Quality·
+Infrastructure라는 공통 기준으로 함께 평가할 수 있어 대상 도메인으로 선정했습니다.
+
 | 구분         | KIVI                                      | ITME                                            |
 | ------------ | ----------------------------------------- | ----------------------------------------------- |
 | 해결 계층    | Software                                  | Hardware / Memory System                        |
