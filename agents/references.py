@@ -14,7 +14,8 @@ State의 sources는 현재 두 가지 형태가 섞여 있다.
 둘 다 처리하되, dict 쪽이 정확한 표기를 만들 수 있으므로 각 에이전트 담당자에게
 tests/mock_state.py 의 SOURCE_REGISTRY 형태를 요청할 것.
 """
-from typing import Any, Iterable, Optional
+from pathlib import Path
+from typing import Any, Optional
 
 # sources 자리에 들어오지만 출처가 아닌 값들 (market 노드의 basis 라벨 등)
 _NON_SOURCE_PREFIXES = ("sw_basis=", "hw_basis=", "basis=")
@@ -25,6 +26,85 @@ _PLACEHOLDER_MARKERS = (
     "미상",
     "example.com",
 )
+
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+# 프로젝트 실행에 실제로 투입하는 PDF 원문 목록. Agent별 State 형식이 서로 달라도
+# 최종 보고서에는 data/에 존재하는 입력 PDF가 빠짐없이 남도록 파일명을 기준으로 관리한다.
+_PROJECT_PDF_SOURCES = {
+    "sw_kivi.pdf": {
+        "id": "src_kivi",
+        "type": "paper",
+        "authors": "Zirui Liu, Jiayi Yuan, Hongye Jin, et al.",
+        "year": "2024",
+        "title": "KIVI: A Tuning-Free Asymmetric 2bit Quantization for KV Cache",
+        "venue": "arXiv preprint",
+        "url": "https://arxiv.org/pdf/2402.02750",
+    },
+    "hw_itme.pdf": {
+        "id": "src_itme",
+        "type": "paper",
+        "authors": "Hakbeom Jang, Younghoon Min, Sunwoong Kim, et al.",
+        "year": "2026",
+        "title": "ITME: Inference Tiered Memory Expansion with Disaggregated CXL-Hybrid Memories",
+        "venue": "arXiv preprint",
+        "url": "https://arxiv.org/pdf/2606.12556",
+    },
+    "LongBench.pdf": {
+        "id": "src_longbench",
+        "type": "paper",
+        "authors": "Yushi Bai, Xin Lv, Jiajie Zhang, et al.",
+        "year": "2024",
+        "title": "LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding",
+        "venue": "arXiv preprint",
+        "url": "https://arxiv.org/abs/2308.14508",
+    },
+    "PagedAttention.pdf": {
+        "id": "src_pagedattention",
+        "type": "paper",
+        "authors": "Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, et al.",
+        "year": "2023",
+        "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+        "venue": "Proceedings of the 29th Symposium on Operating Systems Principles",
+        "url": "https://arxiv.org/abs/2309.06180",
+    },
+    "DistServe.pdf": {
+        "id": "src_distserve",
+        "type": "paper",
+        "authors": "Yinmin Zhong, Shengyu Liu, Junda Chen, et al.",
+        "year": "2024",
+        "title": "DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving",
+        "venue": "OSDI 2024",
+        "url": "https://arxiv.org/abs/2401.09670",
+    },
+    "market_hf_kv_cache.pdf": {
+        "id": "src_market_hf_kv_cache",
+        "type": "web",
+        "org": "Hugging Face",
+        "date": "2026-09-22",
+        "title": "KV cache strategies",
+        "site": "Transformers v4.57.0 documentation",
+        "url": "https://huggingface.co/docs/transformers/v4.57.0/kv_cache",
+    },
+    "market_micron_amd_cxl_memory_expansion.pdf": {
+        "id": "src_market_micron_amd_cxl",
+        "type": "web",
+        "org": "Micron Technology and AMD",
+        "date": "2025-07",
+        "title": "Optimized for Data Centers: Deployment-ready CXL Memory Expansion with 5th Gen AMD EPYC",
+        "site": "Micron white paper",
+        "url": "https://my.micron.com/content/dam/micron/global/public/products/white-paper/optimized-for-data-centers-micron-amd.pdf",
+    },
+}
+
+
+def collect_project_pdf_sources() -> list[dict]:
+    """data/에 실제 존재하는 프로젝트 PDF를 구조화된 출처로 반환한다."""
+    return [
+        {**source, "file": filename}
+        for filename, source in _PROJECT_PDF_SOURCES.items()
+        if (_DATA_DIR / filename).is_file()
+    ]
 
 
 def _is_incomplete_source(source: dict) -> bool:
@@ -95,7 +175,12 @@ def _normalize(value: Any, registry: Optional[dict] = None) -> Optional[dict]:
     return {"id": text, "type": "unknown", "title": "", "_incomplete": True}
 
 
-def collect_sources(state: dict, registry: Optional[dict] = None) -> list[dict]:
+def collect_sources(
+    state: dict,
+    registry: Optional[dict] = None,
+    *,
+    include_project_pdfs: bool = False,
+) -> list[dict]:
     """State 전체를 훑어 실제 사용된 출처를 모으고 중복을 제거한다."""
     raw: list[Any] = []
 
@@ -105,6 +190,9 @@ def collect_sources(state: dict, registry: Optional[dict] = None) -> list[dict]:
 
     for key in _PERSPECTIVE_KEYS:
         raw.extend((state.get(key) or {}).get("sources") or [])
+
+    if include_project_pdfs:
+        raw.extend(collect_project_pdf_sources())
 
     # 선정된 기술의 원문은 항상 인용 대상이다.
     for key in ("selected_sw", "selected_hw"):
@@ -193,11 +281,21 @@ def render_references(
     state: dict,
     registry: Optional[dict] = None,
     report_md: Optional[str] = None,
+    *,
+    include_project_pdfs: bool = False,
 ) -> str:
-    """실제로 본문에서 인용된 출처만 REFERENCE로 만든다."""
-    sources = collect_sources(state, registry)
+    """REFERENCE를 생성한다.
 
-    if report_md is not None:
+    include_project_pdfs=True이면 RAG 입력으로 준비된 모든 PDF를 포함한다.
+    그 외에는 기존처럼 report_md에서 실제 인용된 출처만 선택할 수 있다.
+    """
+    sources = collect_sources(
+        state,
+        registry,
+        include_project_pdfs=include_project_pdfs,
+    )
+
+    if report_md is not None and not include_project_pdfs:
         sources = [
             source
             for source in sources
@@ -261,7 +359,12 @@ def render_references(
     return "\n\n".join(blocks)
 
 
-def audit_sources(state: dict, registry: Optional[dict] = None) -> dict:
+def audit_sources(
+    state: dict,
+    registry: Optional[dict] = None,
+    *,
+    include_project_pdfs: bool = False,
+) -> dict:
     """제출 전 점검용. 표기를 완성할 수 없는 출처를 잡아낸다.
 
     Returns:
@@ -282,7 +385,11 @@ def audit_sources(state: dict, registry: Optional[dict] = None) -> dict:
         if not _is_real_source(item):
             dropped.append(item)
 
-    sources = collect_sources(state, registry)
+    sources = collect_sources(
+        state,
+        registry,
+        include_project_pdfs=include_project_pdfs,
+    )
     incomplete = [
         source
         for source in sources
@@ -291,7 +398,13 @@ def audit_sources(state: dict, registry: Optional[dict] = None) -> dict:
     return {"total": len(sources), "incomplete": incomplete, "dropped": dropped}
 
 
-def find_orphan_citations(report_md: str, state: dict, registry: Optional[dict] = None) -> list[str]:
+def find_orphan_citations(
+    report_md: str,
+    state: dict,
+    registry: Optional[dict] = None,
+    *,
+    include_project_pdfs: bool = False,
+) -> list[str]:
     """본문에 인용됐지만 수집된 출처에 없는 식별자를 찾는다.
 
     본문 인용 표기를 `[src_xxx]` 형태로 통일했을 때만 의미가 있다.
@@ -299,7 +412,14 @@ def find_orphan_citations(report_md: str, state: dict, registry: Optional[dict] 
     import re
 
     cited = set(re.findall(r"\[(src_[A-Za-z0-9_]+)\]", report_md))
-    known = {str(src.get("id")) for src in collect_sources(state, registry)}
+    known = {
+        str(src.get("id"))
+        for src in collect_sources(
+            state,
+            registry,
+            include_project_pdfs=include_project_pdfs,
+        )
+    }
     return sorted(cited - known)
 
 

@@ -218,7 +218,7 @@ class ReportTest(unittest.TestCase):
         self.assertIn("근거 부족 관점 존재", result["warnings"])
 
     @patch("agents.report.get_llm")
-    def test_uncited_source_is_excluded_from_references(
+    def test_all_project_pdf_sources_are_included_in_references(
         self,
         mock_get_llm,
     ):
@@ -238,7 +238,12 @@ class ReportTest(unittest.TestCase):
         )[1]
 
         self.assertIn("KIVI", reference_section)
-        self.assertNotIn("ITME", reference_section)
+        self.assertIn("ITME", reference_section)
+        self.assertIn("LongBench", reference_section)
+        self.assertIn("PagedAttention", reference_section)
+        self.assertIn("DistServe", reference_section)
+        self.assertIn("KV cache strategies", reference_section)
+        self.assertIn("Deployment-ready CXL Memory Expansion", reference_section)
 
 
        

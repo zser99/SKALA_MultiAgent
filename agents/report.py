@@ -128,7 +128,11 @@ def _validate_report_structure(report: str) -> None:
 
 def _validate_citations(report: str, state: dict) -> None:
     """본문에서 인용한 출처 ID가 State에 존재하는지 검사한다."""
-    orphan_citations = find_orphan_citations(report, state)
+    orphan_citations = find_orphan_citations(
+        report,
+        state,
+        include_project_pdfs=True,
+    )
 
     if orphan_citations:
         raise ValueError(
@@ -136,7 +140,7 @@ def _validate_citations(report: str, state: dict) -> None:
             + ", ".join(orphan_citations)
         )
 
-    if collect_sources(state) and not re.search(
+    if collect_sources(state, include_project_pdfs=True) and not re.search(
         r"\[src_[A-Za-z0-9_]+\]",
         report,
     ):
@@ -207,7 +211,9 @@ def report_node(state: dict) -> dict:
         ),
         retry_count=state.get("retry_count", 0),
         warnings=_format_prompt_value(state.get("warnings", [])),
-        available_sources=_format_prompt_value(collect_sources(state)),
+        available_sources=_format_prompt_value(
+            collect_sources(state, include_project_pdfs=True)
+        ),
     )
 
     response = get_llm(temperature=0.2).invoke(prompt)
@@ -218,7 +224,7 @@ def report_node(state: dict) -> dict:
 
     reference_text = render_references(
         state,
-        report_md=report_body,
+        include_project_pdfs=True,
     )
 
     final_report = (
@@ -228,7 +234,10 @@ def report_node(state: dict) -> dict:
     )
 
     warnings = list(state.get("warnings", []))
-    source_audit = audit_sources(state)
+    source_audit = audit_sources(
+        state,
+        include_project_pdfs=True,
+    )
 
     incomplete_sources = source_audit["incomplete"]
     if incomplete_sources:
