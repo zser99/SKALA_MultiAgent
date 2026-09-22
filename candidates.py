@@ -46,6 +46,7 @@ SW_POOL: list[TechCandidate] = [
         "summary": "양자화 계열의 대표적인 베이스라인 기법 (튜닝 불필요, 비대칭 2비트 양자화).",
         "url": "https://arxiv.org/pdf/2402.02750",
         "file": "sw_kivi.pdf",
+        "market_files": ["market_hf_kv_cache.pdf"],
     },
 ]
 
@@ -67,6 +68,7 @@ HW_POOL: list[TechCandidate] = [
         "summary": "CXL-Hybrid 메모리 기반 계층적 메모리 확장 아키텍처, 처리량 1.80배 향상.",
         "url": "https://arxiv.org/pdf/2606.12556",
         "file": "hw_itme.pdf",
+        "market_files": ["market_micron_amd_cxl_memory_expansion.pdf"],
     },
     {
         "id": "pnm_cxl",

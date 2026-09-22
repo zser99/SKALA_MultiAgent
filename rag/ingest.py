@@ -26,9 +26,9 @@ def _load_pdf(filename: str):
     return pages, None
 
 
-def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[FAISS], Optional[str]]:
-    """단일 후보 논문에 대한 벡터스토어를 만들거나, 이미 있으면 재사용한다."""
-    index_path = os.path.join(PERSIST_DIR, f"cand_{candidate_id}")
+def _build_vectorstore(index_name: str, source_id: str, filenames: list[str]) -> tuple[Optional[FAISS], Optional[str]]:
+    """여러 PDF를 하나의 FAISS 벡터스토어로 만들거나, 이미 있으면 재사용한다."""
+    index_path = os.path.join(PERSIST_DIR, index_name)
 
     if os.path.exists(os.path.join(index_path, "index.faiss")):
         # 인덱스와 함께 저장되는 docstore가 pickle이라 명시적 허용이 필요하다.
@@ -38,16 +38,28 @@ def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[FAISS]
         )
         return vs, None
 
-    pages, warning = _load_pdf(filename)
+    all_pages = []
+    warnings = []
+    for filename in filenames:
+        pages, warning = _load_pdf(filename)
+        if warning:
+            warnings.append(warning)
+        if pages:
+            all_pages.extend(pages)
+
+    warning = "\n".join(warnings) if warnings else None
+    pages = all_pages
     if pages is None:
         # PDF도 없고 기존 벡터스토어도 없음 -> 임베딩 모델 로드 자체를 건너뛴다.
+        return None, warning
+    if not pages:
         return None, warning
 
     embeddings = get_embeddings()
 
     if len(pages) > MAX_TOTAL_PAGES:
         warning = (
-            f"[RAG] {filename} 이 {len(pages)}페이지로 과제 한도(200p)를 초과합니다. "
+            f"[RAG] {index_name} 이 {len(pages)}페이지로 과제 한도(200p)를 초과합니다. "
             f"앞 {MAX_TOTAL_PAGES}페이지만 사용합니다."
         )
         pages = pages[:MAX_TOTAL_PAGES]
@@ -57,9 +69,21 @@ def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[FAISS]
     splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
     chunks = splitter.split_documents(pages)
     for c in chunks:
-        c.metadata["source_id"] = candidate_id
-        c.metadata["source_file"] = filename
+        c.metadata["source_id"] = source_id
+        c.metadata.setdefault("source_file", os.path.basename(c.metadata.get("source", "")))
 
     vs = FAISS.from_documents(documents=chunks, embedding=embeddings)
     vs.save_local(index_path)
     return vs, warning
+
+
+def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[FAISS], Optional[str]]:
+    """단일 후보 논문에 대한 벡터스토어를 만들거나, 이미 있으면 재사용한다."""
+    return _build_vectorstore(f"cand_{candidate_id}", candidate_id, [filename])
+
+
+def build_vectorstore_from_files(
+    index_name: str, source_id: str, filenames: list[str]
+) -> tuple[Optional[FAISS], Optional[str]]:
+    """여러 PDF를 하나의 벡터스토어로 묶어 만든다."""
+    return _build_vectorstore(index_name, source_id, filenames)
