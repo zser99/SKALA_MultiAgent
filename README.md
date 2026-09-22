@@ -95,12 +95,25 @@ Evidence Check의 RAG 재검색 대상에는 포함하지 않습니다.
 - 재검색 전략: Query Transformation + Reciprocal Rank Fusion(RRF)
 
 원문 논문은 기술 조사와 기술별 도메인 평가의 근거로 사용하고, 시장·도메인 에이전트는
-자신의 평가 목적에 맞는 보조 문서를 별도 인덱스로 구성합니다. 인덱스 생성 시 PDF 페이지 수는
-최대 200쪽으로 제한합니다.
+자신의 평가 목적에 맞는 보조 문서를 별도 인덱스로 구성합니다.
 
-원문 논문은 기술 조사와 기술별 도메인 평가의 근거로 사용하고, 시장·도메인 에이전트는
-자신의 평가 목적에 맞는 보조 문서를 별도 인덱스로 구성합니다. 인덱스 생성 시 PDF 페이지 수는
-최대 200쪽으로 제한합니다.
+### 인덱싱 문서와 페이지 수
+
+| 용도 | 파일 | 페이지 |
+| --- | --- | ---: |
+| 기술 조사·기술별 평가 | `sw_kivi.pdf` | 15 |
+| 기술 조사·기술별 평가 | `hw_itme.pdf` | 13 |
+| KIVI 시장 평가 | `market_hf_kv_cache.pdf` | 6 |
+| ITME 시장 평가 | `market_micron_amd_cxl_memory_expansion.pdf` | 6 |
+| 도메인 평가 | `PagedAttention.pdf` | 16 |
+| 도메인 평가 | `LongBench.pdf` | 19 |
+| **고유 문서 합계** | **6개 PDF** | **75** |
+
+현재 데이터 풀은 고유 문서 기준 6개·75쪽으로, 페이지
+절단 없이 전부 인덱싱합니다. 평가 목적별로 인덱스를 분리하기 때문에 KIVI·ITME 원문은
+기술 인덱스와 시장 인덱스에서 각각 재사용됩니다. 이 중복 처리까지 포함한 인덱스별 누적
+페이지는 103쪽이지만, 실제 사용한 고유 원문은 75쪽입니다. 페이지 수는 현재 `data/`에
+저장된 PDF를 기준으로 산정했습니다.
 
 `BAAI/bge-m3`는 한국어 질의와 영어 논문 사이의 cross-lingual retrieval, 긴 문맥 지원,
 향후 Sparse·Multi-vector 검색 확장 가능성을 기준으로 선정했습니다. 현재 구현은
@@ -123,20 +136,22 @@ Evidence Check의 RAG 재검색 대상에는 포함하지 않습니다.
 선택적으로 적용합니다. 키워드 일치만으로 근거의 의미적 적합성을 확정할 수는 없으며,
 재검색 전략의 효과는 추가 평가가 필요합니다.
 
-## 6. 1차 평가 보고서의 핵심 포인트
+## 6. 최종 평가 보고서의 핵심 포인트
 
-- KIVI는 tuning-free 2bit 양자화로 KV Cache를 축소합니다. 1차 보고서의 원문 실험 근거에서는
-  peak memory 약 2.6× 절감과 동일 GPU 환경에서의 throughput 개선(약 2.35→3.47×)이 확인됐습니다.
-  반면 그룹 크기·residual 길이 같은 설정 민감도와 일부 모델의 품질 저하 가능성은 함께 검증해야 합니다.
+- KIVI는 tuning-free 비대칭 2bit 양자화로 KV Cache를 축소합니다. 원문 실험에서는 peak memory
+  약 2.6× 절감, 최대 4× 큰 batch 허용, throughput 2.35→3.47× 향상이 보고됐습니다. 반면
+  그룹 크기·residual 길이의 설정 민감도, 일부 모델의 품질 저하, 런타임 오버헤드는 함께 검증해야 합니다.
 - ITME는 CXL-hybrid 원격 메모리와 multi-tier DMA 프리페칭으로 TB급 용량 확장을 지향합니다.
-  장기 컨텍스트 워크로드의 처리량 개선 근거가 있으나, I/O contention, prefetch buffer 설정,
-  프로토타입과 실제 장치 간 성능 차이는 운영 측면의 주요 검증 항목으로 나타났습니다.
-- 두 기술 모두 공개 논문·프로토타입·실험 근거는 있으나, TRL 5~6은 공개 자료 기반 추정입니다.
-  시장 규모·상용 채택·TTFT/TPOT·동일 조건의 절대 HBM 절감량은 1차 입력만으로 확인하기 어려웠습니다.
+  일부 워크로드에서 최대 35.7%의 throughput 향상과 turn 5 기준 1.81× 개선이 보고됐습니다.
+  다만 I/O contention, 대역폭 변동, weight miss에 따른 pipeline stall은 주요 운영 검증 항목입니다.
+- 두 기술의 TRL은 논문·프로토타입·실험 근거를 바탕으로 대략 4~6으로 추정했습니다. 이는 공개
+  자료 기반 범위이며 확정 등급이 아닙니다. 시장 규모·상용 채택·TTFT/TPOT·Cost/Token·전력 및
+  광범위한 프레임워크 통합 근거는 현재 입력만으로 확인하기 어렵습니다.
 - 기술적 성능 향상이 곧 시장 채택을 의미하지 않습니다. 품질 변화, 프레임워크 호환성,
   CXL 인프라 비용, 운영 복잡도처럼 도입 주체별 판단 기준을 함께 봐야 합니다.
-- 같은 수치라도 모델·하드웨어·문맥 길이·부하 조건이 다르면 직접 비교할 수 없습니다.
-  따라서 공개 자료 기반 TRL과 성능 수치는 조건과 한계를 포함해 해석합니다.
+- KIVI와 ITME의 성능 수치는 모델·하드웨어·문맥 길이·부하와 평가 지표가 서로 달라 직접 비교할 수
+  없습니다. 기존 GPU에서의 단기 파일럿과 TB급 장문맥을 위한 장기 인프라 검증처럼 적용 조건에
+  따라 검증 순서와 핵심 지표를 달리해야 합니다.
 - 결론은 기술의 우열보다 “어떤 환경에서 어떤 효익과 부담이 커지는가”에 초점을 둡니다.
 
 최종 보고서는 `SUMMARY → 분석 배경 → 기술 선정 → 기술 개요 → 관점별 평가 → 시사점 →
@@ -192,9 +207,11 @@ data/hw_itme.pdf
 data/market_hf_kv_cache.pdf
 data/market_micron_amd_cxl_memory_expansion.pdf
 data/PagedAttention.pdf
-data/DistServe.pdf
 data/LongBench.pdf
 ```
+
+`DistServe.pdf`는 latency 관점 확장을 위한 선택 문서로 코드에 등록돼 있지만, 이번 최종 실행의
+`data/`에는 포함되지 않았으므로 위 75쪽과 현재 인덱스·REFERENCE 집계에서 제외했습니다.
 
 전체 파이프라인을 실행합니다.
 
@@ -258,20 +275,21 @@ Retrieval 평가는 수행할 수 없습니다.
   `Insufficient Evidence`로 남깁니다.
 - REFERENCE는 코드가 본문 인용과 State의 `sources`를 대조해 생성합니다. 다만 일부
   에이전트는 아직 문자열·basis 라벨 형태의 출처를 반환하므로, 모든 에이전트를 구조화된
-  `SourceRecord` 형식으로 전환하는 작업이 남아 있습니다. 불완전하거나 출처가 아닌 값은
-  보고서 경고로 확인할 수 있습니다.
+  `SourceRecord` 형식으로 전환하는 작업이 남아 있습니다. 현재 최종 보고서의 REFERENCE에는
+  KIVI·ITME 원문 2건만 출력되며, 시장·도메인 보조 문서의 출처 전달은 `references.py` 연동
+  수정 후 다시 검증할 예정입니다. 불완전하거나 출처가 아닌 값은 보고서 경고로 확인할 수 있습니다.
 - BGE-M3의 Sparse·Multi-vector 기능은 사용하지 않습니다. Hybrid Retrieval은 후속 확장 범위입니다.
 
 ## 11. 팀원 및 담당
 
-| 담당자 | 담당 에이전트         |
-| ------ | --------------------- |
-| 오상현 | 기술 조사 Agent       |
-| 목진훈 | 시장 평가 Agent       |
-| 오지연 | 이해관계자 평가 Agent |
-| 이은서 | 도메인 평가 Agent     |
-| 이휘호 | 평가 종합 Agent       |
-| 이민서 | 보고서 생성 Agent     |
+| 담당자 | 담당 Agent | 핵심 책임 |
+| --- | --- | --- |
+| 오상현 | 기술 조사 | 원문 근거를 확보하고 기술 원리·적용 범위·한계 추출 |
+| 목진훈 | 시장 평가 | 시장성·상용화 수준·채택 현황 평가 |
+| 오지연 | 이해관계자 평가 | 개발자·경쟁 진영·산업계 등 이해관계자별 시각 분석 |
+| 이은서 | 도메인 평가 | 대상 도메인의 공통 기준에 따라 기술별 적합성 평가 |
+| 이휘호 | 평가 종합 | 관점별 공통점·차이·트레이드오프와 조건부 시사점 종합 |
+| 이민서 | 보고서 생성 | State의 분석 결과와 출처를 검증해 최종 보고서 구성 |
 
 ## 12. REFERENCE
 
@@ -283,7 +301,6 @@ Retrieval 평가는 수행할 수 없습니다.
 **도메인 평가 기준 참고 논문**
 
 - Woosuk Kwon 외(2023). Efficient Memory Management for Large Language Model Serving with PagedAttention. arXiv preprint.
-- Yinmin Zhong 외(2024). DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving. arXiv preprint.
 - Yushi Bai 외(2024). LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding. arXiv preprint.
 
 **시장 평가 참고자료**
