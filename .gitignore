@@ -1,4 +1,6 @@
 .env
+.env.*
+
 __pycache__/
 **/__pycache__/
 *.pyc
@@ -14,7 +16,13 @@ data/*.pdf
 # Virtual environments
 venv/
 .venv/
-env/
+pyproject.toml
+uv.lock
 
 # Editor
 .vscode/
+
+# Python
+.python-version
+
+

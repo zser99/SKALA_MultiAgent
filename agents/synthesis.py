@@ -7,6 +7,9 @@ from llm import get_llm
 from agents.utils import load_prompt, parse_json_response
 
 
+EXPECTED_OUTPUT_KEYS = ("agreements", "conflicts", "implications")
+
+
 def synthesis_node(state: dict) -> dict:
     tr = state["tech_research"]
     prompt = load_prompt("synthesis").format(
@@ -21,7 +24,14 @@ def synthesis_node(state: dict) -> dict:
         domain_focus=state.get("domain_focus", ""),
         domain_sw=state["domain_result"]["sw"],
         domain_hw=state["domain_result"]["hw"],
+        evidence_sufficient=state.get("evidence_sufficient", False),
+        evidence_warnings="\n".join(state.get("warnings", [])) or "없음",
     )
     resp = get_llm(temperature=0.2).invoke(prompt)
     result = parse_json_response(resp.content)
+
+    missing = [key for key in EXPECTED_OUTPUT_KEYS if key not in result]
+    if missing:
+        raise ValueError(f"평가 종합 결과에 필수 항목이 없습니다: {', '.join(missing)}")
+
     return {"synthesis": result}

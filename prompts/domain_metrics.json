@@ -1,0 +1,37 @@
+{
+  "memory_efficiency": {
+    "definition": "장문맥과 동시 요청 증가 시 KV cache 메모리 부담 완화 정도",
+    "items": ["KV cache 크기", "GPU HBM 점유량", "수용 가능한 문맥 길이", "동시 요청 수"],
+    "question": "KIVI는 저장할 KV cache를 얼마나 줄이고, ITME는 수용 공간을 얼마나 확장하는가?",
+    "query": "KV cache size GPU HBM usage maximum context length concurrent requests memory capacity",
+    "design_reference": {"title": "PagedAttention", "file": "2309.06180v1.pdf", "pages": [1, 2]}
+  },
+  "latency": {
+    "definition": "기술 적용 전후의 응답 지연 변화",
+    "items": ["첫 토큰 응답 시간(TTFT)", "토큰당 생성 시간(TPOT)", "양자화·복원 또는 데이터 이동 지연"],
+    "question": "TTFT와 TPOT를 각각 측정했는가? 적용 전후 값과 워크로드 조건은 무엇인가?",
+    "query": "TTFT time to first token TPOT time per output token quantization dequantization data movement latency",
+    "design_reference": {"title": "팀 도메인 평가 기준", "file": null, "pages": []}
+  },
+  "throughput": {
+    "definition": "장문맥과 동시 요청 환경의 서빙 처리량 변화",
+    "items": ["초당 생성 토큰 수", "초당 처리 요청 수", "배치 크기"],
+    "question": "메모리 병목 완화가 처리량 개선으로 이어지는가? 어떤 부하에서 측정했는가?",
+    "query": "tokens per second requests per second batch size long context concurrent serving throughput",
+    "design_reference": {"title": "PagedAttention", "file": "2309.06180v1.pdf", "pages": [1, 10]}
+  },
+  "quality": {
+    "definition": "최적화 전후 모델 출력 품질 변화",
+    "items": ["평가 데이터셋과 지표", "기준 모델 대비 성능 변화"],
+    "question": "출력 품질을 실제로 측정했는가? 품질 변화의 근거가 없는 항목은 무엇인가?",
+    "query": "evaluation dataset metric baseline model output quality accuracy quantization impact",
+    "design_reference": {"title": "LongBench", "file": "2308.14508v2.pdf", "pages": [1, 4]}
+  },
+  "infrastructure_requirement": {
+    "definition": "기존 클라우드·데이터센터 환경에 필요한 변경 규모",
+    "items": ["SW·서빙 프레임워크 수정", "CXL 지원 장비", "운영 복잡도"],
+    "question": "도입하려면 기존 시스템에서 무엇을 바꿔야 하는가?",
+    "query": "serving framework software changes CXL compatible hardware deployment operational complexity",
+    "design_reference": {"title": "팀 도메인 평가 기준", "file": null, "pages": []}
+  }
+}
