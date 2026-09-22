@@ -128,6 +128,13 @@ def _validate_report_structure(report: str) -> None:
 
 def _validate_citations(report: str, state: dict) -> None:
     """본문에서 인용한 출처 ID가 State에 존재하는지 검사한다."""
+    error = _citation_validation_error(report, state)
+    if error:
+        raise ValueError(error)
+
+
+def _citation_validation_error(report: str, state: dict) -> str | None:
+    """인용 검증 실패 사유를 반환한다. 성공하면 None을 반환한다."""
     orphan_citations = find_orphan_citations(
         report,
         state,
@@ -135,16 +142,47 @@ def _validate_citations(report: str, state: dict) -> None:
     )
 
     if orphan_citations:
-        raise ValueError(
-            "본문에 등록되지 않은 출처가 인용됐습니다: "
-            + ", ".join(orphan_citations)
-        )
+        return "본문에 등록되지 않은 출처가 인용됐습니다: " + ", ".join(orphan_citations)
 
     if collect_sources(state, include_project_pdfs=True) and not re.search(
         r"\[src_[A-Za-z0-9_]+\]",
         report,
     ):
-        raise ValueError("보고서 본문에 출처 인용이 없습니다")
+        return "보고서 본문에 출처 인용이 없습니다"
+
+    return None
+
+
+def _citation_repair_prompt(
+    prompt: str,
+    draft: str,
+    issue: str,
+    state: dict,
+) -> str:
+    """인용 누락·오류가 발생했을 때 완전한 보고서 본문을 한 번만 재생성하도록 지시한다."""
+    source_ids = [
+        str(source["id"])
+        for source in collect_sources(
+            state,
+            include_project_pdfs=True,
+        )
+        if source.get("id")
+    ]
+    allowed_ids = ", ".join(source_ids) or "(등록된 출처 없음)"
+    return f"""{prompt}
+
+[인용 보완 재생성 — 반드시 수행]
+아래 초안은 인용 검증에 실패했습니다.
+실패 사유: {issue}
+사용 가능한 출처 ID: {allowed_ids}
+
+초안의 사실관계와 필수 목차를 유지하되, 사실 주장 뒤에 위 목록의 ID만 `[src_xxx]` 형식으로
+추가하여 보고서 본문 전체를 다시 작성하세요. 새로운 사실·출처·REFERENCE 섹션은 추가하지 마세요.
+인용이 하나도 없는 응답은 허용되지 않습니다.
+
+[인용 보완 전 초안]
+{draft}
+"""
 
 def _source_identifier(source: dict) -> str:
     return str(
@@ -218,7 +256,19 @@ def report_node(state: dict) -> dict:
 
     response = get_llm(temperature=0.2).invoke(prompt)
     report_body = _strip_reference_section(str(response.content))
-    # 검증 호출
+
+    # 인용이 누락되거나 등록되지 않은 인용이 있으면, 같은 입력으로 1회만 보완 생성한다.
+    citation_issue = _citation_validation_error(report_body, state)
+    if citation_issue:
+        repair_prompt = _citation_repair_prompt(
+            prompt,
+            report_body,
+            citation_issue,
+            state,
+        )
+        repaired = get_llm(temperature=0.2).invoke(repair_prompt)
+        report_body = _strip_reference_section(str(repaired.content))
+
     _validate_report_structure(report_body)
     _validate_citations(report_body, state)
 
