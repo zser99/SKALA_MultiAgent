@@ -14,12 +14,12 @@ LLM은 토큰 생성 과정에서 이전 Key·Value를 KV Cache에 저장해 연
 하지만 문맥 길이와 동시 요청이 증가하면 KV Cache가 GPU HBM을 빠르게 점유하면서
 메모리 용량과 데이터 이동이 추론 병목으로 바뀝니다.
 
-| 구분 | KIVI | ITME |
-| --- | --- | --- |
-| 해결 계층 | Software | Hardware / Memory System |
-| 핵심 접근 | 비대칭 2-bit 양자화로 KV Cache 크기 축소 | CXL-Hybrid 계층형 메모리로 가용 용량 확장 |
-| 주요 평가 축 | 메모리 절감·처리량·품질 변화 | 용량·지연시간·처리량·인프라 비용 |
-| 선정 이유 | 공개 논문·구현·정량 실험을 통한 평가 가능 | 프로토타입·성능 검증 및 CXL 도입 부담 평가 가능 |
+| 구분         | KIVI                                      | ITME                                            |
+| ------------ | ----------------------------------------- | ----------------------------------------------- |
+| 해결 계층    | Software                                  | Hardware / Memory System                        |
+| 핵심 접근    | 비대칭 2-bit 양자화로 KV Cache 크기 축소  | CXL-Hybrid 계층형 메모리로 가용 용량 확장       |
+| 주요 평가 축 | 메모리 절감·처리량·품질 변화              | 용량·지연시간·처리량·인프라 비용                |
+| 선정 이유    | 공개 논문·구현·정량 실험을 통한 평가 가능 | 프로토타입·성능 검증 및 CXL 도입 부담 평가 가능 |
 
 두 기술은 동일한 문제를 서로 다른 계층에서 해결하므로, 직접적인 우열보다
 **Memory·Latency·Throughput·Quality·Infrastructure의 조건별 trade-off**를 분석하기 적합합니다.
@@ -45,7 +45,7 @@ LLM은 토큰 생성 과정에서 이전 Key·Value를 KV Cache에 저장해 연
    Query Transformation + RRF를 Hit Rate@5·MRR@5로 비교했습니다.
 
 5. **LLM이 아닌 코드로 REFERENCE를 통제**
-   보고서 본문의 인용 ID를 검증하고, 실제로 본문에서 인용된 State 출처만 코드로
+   보고서 본문의 인용 ID를 검증하고, 등록된 출처 중 본문에서 인용된 자료만 코드로
    REFERENCE에 구성합니다. 누락된 서지 정보나 출처가 아닌 값은 경고로 남깁니다.
 
 ## 3. 시스템 구조
@@ -92,7 +92,11 @@ Evidence Check의 RAG 재검색 대상에는 포함하지 않습니다.
 - Embedding: `BAAI/bge-m3`의 Dense embedding
 - Vector DB: FAISS, 기술별 인덱스 분리
 - Baseline: Dense Retrieval + Top-K
-- 개선 전략: Query Transformation + Reciprocal Rank Fusion(RRF)
+- 재검색 전략: Query Transformation + Reciprocal Rank Fusion(RRF)
+
+원문 논문은 기술 조사와 기술별 도메인 평가의 근거로 사용하고, 시장·도메인 에이전트는
+자신의 평가 목적에 맞는 보조 문서를 별도 인덱스로 구성합니다. 인덱스 생성 시 PDF 페이지 수는
+최대 200쪽으로 제한합니다.
 
 원문 논문은 기술 조사와 기술별 도메인 평가의 근거로 사용하고, 시장·도메인 에이전트는
 자신의 평가 목적에 맞는 보조 문서를 별도 인덱스로 구성합니다. 인덱스 생성 시 PDF 페이지 수는
@@ -104,17 +108,20 @@ Evidence Check의 RAG 재검색 대상에는 포함하지 않습니다.
 
 ### Retrieval 평가 결과
 
-한국어 질의 14개(KIVI 7개, ITME 7개)를 대상으로, 원문에 등장하는 gold keyword가
-Top-5 검색 결과에 포함되는지를 동일 조건에서 측정했습니다.
+현재 KIVI·ITME PDF로 새 인덱스를 만든 뒤 한국어 질의 14개(KIVI 7개, ITME 7개)를
+평가했습니다. 검색된 단일 청크에 해당 질의의 gold keyword가 모두 있으면 적중으로
+간주하는 키워드 기반 평가입니다.
 
-| 전략 | Hit Rate@5 | MRR@5 |
-| --- | ---: | ---: |
-| Dense Top-K | 0.857 | 0.693 |
-| Query Transformation + RRF | **0.929** | **0.744** |
-| 변화량 | **+0.072** | **+0.051** |
+| 전략                       | Hit Rate@5 |  MRR@5 |
+| -------------------------- | ---------: | -----: |
+| Dense Top-K                |      0.857 |  0.738 |
+| Query Transformation + RRF |      0.857 |  0.631 |
+| 변화량                     |     +0.000 | -0.107 |
 
-두 지표가 모두 향상되어 개선 전략을 전체 검색의 기본값으로 사용하지 않고,
-근거가 부족한 관점의 재검색 경로에 선택적으로 적용했습니다.
+이번 실행에서 두 전략의 적중률은 같았고, 질의 변환 후 MRR@5는 낮아졌습니다.
+따라서 질의 변환을 전체 검색의 기본값으로 사용하지 않고 근거 부족 시 재검색에만
+선택적으로 적용합니다. 키워드 일치만으로 근거의 의미적 적합성을 확정할 수는 없으며,
+재검색 전략의 효과는 추가 평가가 필요합니다.
 
 ## 6. 1차 평가 보고서의 핵심 포인트
 
@@ -143,8 +150,8 @@ REFERENCE만 추가합니다.
 
 - Multi-Agent의 가치는 에이전트 수보다 **역할과 State 책임을 분리하는 설계**에서 나왔습니다.
   병렬 에이전트가 서로 다른 키에 쓰게 하니 fan-out/fan-in을 안정적으로 구성할 수 있었습니다.
-- RAG 품질은 모델 선택만으로 결정되지 않았습니다. 동일한 임베딩에서도 질의 변환과
-  결과 융합을 적용하자 정답 근거의 검색 여부와 순위가 함께 개선됐습니다.
+- RAG 검색 전략의 효과는 질의와 문서에 따라 달랐습니다. 이번 키워드 기반 평가에서
+  질의 변환과 결과 융합은 적중률을 높이지 못했고 MRR@5도 낮아졌습니다.
 - 근거가 없을 때 LLM이 답을 채우게 두기보다, 부족함을 감지해 필요한 관점만 다시 검색하는
   흐름이 비용과 신뢰성 사이에서 더 현실적인 선택이었습니다.
 - SW와 HW 기술은 하나의 점수로 공정하게 비교하기 어렵습니다. 공통 도메인과 평가 축을 먼저
@@ -185,6 +192,7 @@ data/hw_itme.pdf
 data/market_hf_kv_cache.pdf
 data/market_micron_amd_cxl_memory_expansion.pdf
 data/PagedAttention.pdf
+data/DistServe.pdf
 data/LongBench.pdf
 ```
 
@@ -251,17 +259,34 @@ Retrieval 평가는 수행할 수 없습니다.
 - REFERENCE는 코드가 본문 인용과 State의 `sources`를 대조해 생성합니다. 다만 일부
   에이전트는 아직 문자열·basis 라벨 형태의 출처를 반환하므로, 모든 에이전트를 구조화된
   `SourceRecord` 형식으로 전환하는 작업이 남아 있습니다. 불완전하거나 출처가 아닌 값은
-  보고서 경고로 확인할 수 있습니다. 현재 1차 보고서의 REFERENCE는 실제로 인용된 KIVI·ITME
-  원 논문 2건 중심이므로, 시장·이해관계자 보조 자료의 구조화된 출처 전달을 보완해야 합니다.
+  보고서 경고로 확인할 수 있습니다.
 - BGE-M3의 Sparse·Multi-vector 기능은 사용하지 않습니다. Hybrid Retrieval은 후속 확장 범위입니다.
 
 ## 11. 팀원 및 담당
 
-| 담당자 | 담당 에이전트 |
-| --- | --- |
-| 오상현 | 기술 조사 Agent |
-| 목진훈 | 시장 평가 Agent |
+| 담당자 | 담당 에이전트         |
+| ------ | --------------------- |
+| 오상현 | 기술 조사 Agent       |
+| 목진훈 | 시장 평가 Agent       |
 | 오지연 | 이해관계자 평가 Agent |
-| 이은서 | 도메인 평가 Agent |
-| 이휘호 | 평가 종합 Agent |
-| 이민서 | 보고서 생성 Agent |
+| 이은서 | 도메인 평가 Agent     |
+| 이휘호 | 평가 종합 Agent       |
+| 이민서 | 보고서 생성 Agent     |
+
+## 12. REFERENCE
+
+**논문**
+
+- Zirui Liu 외(2024). KIVI: A Tuning-Free Asymmetric 2bit Quantization for KV Cache. ICML 2024.
+- Hakbeom Jang 외(2026). ITME: Inference Tiered Memory Expansion with Disaggregated CXL-Hybrid Memories. arXiv preprint.
+
+**도메인 평가 기준 참고 논문**
+
+- Woosuk Kwon 외(2023). Efficient Memory Management for Large Language Model Serving with PagedAttention. arXiv preprint.
+- Yinmin Zhong 외(2024). DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving. arXiv preprint.
+- Yushi Bai 외(2024). LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding. arXiv preprint.
+
+**시장 평가 참고자료**
+
+- Venkata Ravi Shankar Jonnalagadda 외(연도 미상). Optimized for Data Centers: Deployment-ready CXL Memory Expansion with 5th Gen AMD EPYC. Micron·AMD 백서.
+- Hugging Face(연도 미상). KV cache strategies. Transformers 기술 문서.
