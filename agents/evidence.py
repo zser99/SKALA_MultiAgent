@@ -32,6 +32,10 @@ SOFT_MARKERS = (
 )
 MIN_SOFT_MARKERS = 2
 
+# 도메인 평가는 5개 기준을 다루므로 단일 세부 기준의 근거 누락은 최종 보고서에
+# 한계로 남길 수 있다. 두 개 이상의 기술·기준 조합이 비어 있을 때 재검색한다.
+MIN_DOMAIN_EVIDENCE_GAPS = 2
+
 
 def _marker_count(value: object, markers: tuple[str, ...]) -> int:
     text = str(value)
@@ -55,6 +59,17 @@ def _has_evidence_gap(value: object) -> bool:
         _marker_count(value, CRITICAL_MARKERS) > 0
         or _marker_count(value, SOFT_MARKERS) >= MIN_SOFT_MARKERS
     )
+
+
+def _domain_has_evidence_gap(result: dict) -> bool:
+    """도메인 노드가 제공하는 구조화된 근거 누락 정보를 우선 사용한다."""
+    analysis = result.get("domain_analysis")
+    if isinstance(analysis, dict) and isinstance(analysis.get("evidence_gaps"), list):
+        return len(analysis["evidence_gaps"]) >= MIN_DOMAIN_EVIDENCE_GAPS
+
+    # 이전 형식의 결과와도 호환되도록 구조화된 정보가 없을 때만 문구를 검사한다.
+    text = " ".join(str(result.get(side, "")) for side in ("sw", "hw"))
+    return _has_evidence_gap(text)
 
 
 def _weak_perspectives(state: dict) -> list[str]:
@@ -86,12 +101,18 @@ def _weak_perspectives(state: dict) -> list[str]:
     for name, key in (("market", "market_result"), ("domain", "domain_result")):
         raw_result = state.get(key, {})
         result = raw_result if isinstance(raw_result, dict) else {}
-        text = " ".join(str(result.get(side, "")) for side in ("sw", "hw"))
         result_missing = (
             not isinstance(raw_result, dict)
             or any(_is_missing(result.get(side)) for side in ("sw", "hw"))
         )
-        if result_missing or _has_evidence_gap(text):
+        has_gap = (
+            _domain_has_evidence_gap(result)
+            if name == "domain"
+            else _has_evidence_gap(
+                " ".join(str(result.get(side, "")) for side in ("sw", "hw"))
+            )
+        )
+        if result_missing or has_gap:
             weak.append(name)
 
     return weak
