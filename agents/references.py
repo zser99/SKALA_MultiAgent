@@ -110,9 +110,12 @@ def collect_sources(state: dict, registry: Optional[dict] = None) -> list[dict]:
     for key in ("selected_sw", "selected_hw"):
         cand = state.get(key)
         if cand and cand.get("url"):
+            candidate_id = str(cand.get("id") or cand["url"])
+            if not candidate_id.startswith("src_"):
+                candidate_id = f"src_{candidate_id}"
             raw.append(
                 {
-                    "id": cand.get("id") or cand["url"],
+                    "id": candidate_id,
                     "type": "paper",
                     "authors": cand.get("authors", ""),
                     "year": (cand.get("year") or "")[:4],
@@ -208,8 +211,8 @@ def render_references(
             )
         ]
 
-        if not sources:
-            return "(활용한 자료 없음)"
+    if not sources:
+        return "(활용한 자료 없음)"
 
     groups = {
         "paper": [],

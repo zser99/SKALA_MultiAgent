@@ -18,6 +18,20 @@ class ReferencesTest(unittest.TestCase):
             len(sources),
         )
 
+    def test_candidate_ids_are_normalized_for_citations(self):
+        state = {
+            "selected_sw": {
+                "id": "kivi",
+                "title": "KIVI",
+                "year": "2024",
+                "url": "https://arxiv.org/abs/2402.02750",
+            }
+        }
+
+        sources = collect_sources(state)
+
+        self.assertEqual(sources[0]["id"], "src_kivi")
+
     def test_render_references_groups_source_types(self):
         rendered = render_references(MOCK_STATE, SOURCE_REGISTRY)
 

@@ -97,6 +97,13 @@ class ReportTest(unittest.TestCase):
         ):
             report_node({})
 
+    def test_missing_nested_state_is_rejected(self):
+        state = make_valid_state()
+        del state["tech_research"]["hw"]
+
+        with self.assertRaisesRegex(ValueError, "tech_research.hw"):
+            report_node(state)
+
     def test_llm_reference_section_is_removed(self):
         report = (
             "## 0. SUMMARY\n"
@@ -169,6 +176,46 @@ class ReportTest(unittest.TestCase):
             "등록되지 않은 출처",
         ):
             report_node(make_valid_state())
+
+    @patch("agents.report.get_llm")
+    def test_report_without_citations_is_rejected(
+        self,
+        mock_get_llm,
+    ):
+        report_without_citations = (
+            VALID_REPORT_BODY
+            .replace(" [src_kivi]", "")
+            .replace(" [src_itme]", "")
+        )
+        mock_get_llm.return_value.invoke.return_value = SimpleNamespace(
+            content=report_without_citations
+        )
+
+        with self.assertRaisesRegex(ValueError, "출처 인용이 없습니다"):
+            report_node(make_valid_state())
+
+    @patch("agents.report.get_llm")
+    def test_evidence_status_and_sources_are_passed_to_prompt(
+        self,
+        mock_get_llm,
+    ):
+        state = make_valid_state()
+        state["evidence_sufficient"] = False
+        state["retry_count"] = 1
+        state["warnings"] = ["근거 부족 관점 존재"]
+        mock_get_llm.return_value.invoke.return_value = SimpleNamespace(
+            content=VALID_REPORT_BODY
+        )
+
+        result = report_node(state)
+        prompt = mock_get_llm.return_value.invoke.call_args.args[0]
+
+        self.assertIn("근거 충분 여부: 불충분", prompt)
+        self.assertIn("재검색 횟수: 1", prompt)
+        self.assertIn("근거 부족 관점 존재", prompt)
+        self.assertIn("src_kivi", prompt)
+        self.assertIn("src_itme", prompt)
+        self.assertIn("근거 부족 관점 존재", result["warnings"])
 
     @patch("agents.report.get_llm")
     def test_uncited_source_is_excluded_from_references(

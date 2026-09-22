@@ -6,6 +6,7 @@ import json
 import re
 from agents.references import (
     audit_sources,
+    collect_sources,
     find_orphan_citations,
     render_references,
 )
@@ -48,7 +49,7 @@ _REQUIRED_STATE_KEYS = (
 
 
 def _validate_state(state: dict) -> None:
-    """보고서 생성에 필요한 최상위 State 값이 존재하는지 검사한다."""
+    """보고서 생성에 필요한 State 값과 중첩 필드를 검사한다."""
     missing = [
         key
         for key in _REQUIRED_STATE_KEYS
@@ -59,6 +60,25 @@ def _validate_state(state: dict) -> None:
         raise ValueError(
             "보고서 생성에 필요한 State 값이 없습니다: "
             + ", ".join(missing)
+        )
+
+    nested_requirements = {
+        "tech_research": ("sw", "hw"),
+        "market_result": ("sw", "hw"),
+        "stakeholder_result": ("sw", "hw"),
+        "domain_result": ("sw", "hw"),
+        "synthesis": ("agreements", "conflicts", "implications"),
+    }
+    missing_nested = [
+        f"{parent}.{child}"
+        for parent, children in nested_requirements.items()
+        for child in children
+        if not isinstance(state[parent], dict) or child not in state[parent]
+    ]
+    if missing_nested:
+        raise ValueError(
+            "보고서 생성에 필요한 State 값이 없습니다: "
+            + ", ".join(missing_nested)
         )
 
 
@@ -115,6 +135,12 @@ def _validate_citations(report: str, state: dict) -> None:
             "본문에 등록되지 않은 출처가 인용됐습니다: "
             + ", ".join(orphan_citations)
         )
+
+    if collect_sources(state) and not re.search(
+        r"\[src_[A-Za-z0-9_]+\]",
+        report,
+    ):
+        raise ValueError("보고서 본문에 출처 인용이 없습니다")
 
 def _source_identifier(source: dict) -> str:
     return str(
@@ -174,6 +200,14 @@ def report_node(state: dict) -> dict:
         implications=_format_prompt_value(
             synthesis.get("implications", "확인 불가")
         ),
+        evidence_status=(
+            "충분"
+            if state.get("evidence_sufficient", False)
+            else "불충분"
+        ),
+        retry_count=state.get("retry_count", 0),
+        warnings=_format_prompt_value(state.get("warnings", [])),
+        available_sources=_format_prompt_value(collect_sources(state)),
     )
 
     response = get_llm(temperature=0.2).invoke(prompt)
