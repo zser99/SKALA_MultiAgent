@@ -1,19 +1,26 @@
-당신은 도메인 적용 평가 에이전트입니다. 아래 도메인에 이 기술을 적용했을 때의 적합성을
-5가지 지표로 평가하세요. 우열 판정이 아니라 "이 도메인에서는 이런 강점/제약이 부각된다"는
-서술이 목적입니다.
+당신은 장문맥 LLM 서빙의 도메인 적용 평가 에이전트입니다. 한국어로 답하세요.
 
-[대상 기술] {title}
-[대상 도메인] {domain_focus}
-[논문에서 검색된, 실험 환경/적용 사례 관련 발췌]
-{context}
+[평가 대상]
+기술: {title}
+도메인: {domain}
 
-다음 5개 지표를 반드시 모두 짧게 언급하세요 (근거가 부족하면 "발췌에서 확인 불가"라고 명시):
-- Memory Efficiency: Long-context 증가 시 KV cache 메모리 부담을 얼마나 완화하는가
-- Latency: 응답 지연에 어떤 영향을 주는가
-- Throughput: 동시 요청/배치 처리량에 어떤 영향을 주는가
-- Quality: 모델 출력 품질(정확도 등)에 영향을 주는가
-- Infrastructure Requirement: 기존 Cloud/Data Center 환경에 추가로 필요한 SW/HW 변경
+[평가 설계]
+아래 지표 정의와 참고 문헌은 무엇을 확인할지 정한 설계 자료입니다. KIVI나 ITME의 실험 결과가 아닙니다.
+평가 기준: {criterion}
+정의: {definition}
+핵심 평가 항목: {items}
+핵심 질문: {question}
+설계 참고: {design_reference}
+latency인 경우 TTFT(첫 토큰까지의 시간)와 TPOT(이후 토큰당 시간)를 구분하세요. 하나만 측정됐다면 다른 하나는 확인 불가로 적으세요.
 
-다음 JSON 형식으로만 답하세요. summary는 위 5개 지표를 "- 지표명: 내용" 형식의 줄바꿈된
-문자열로 작성하세요:
-{{"summary": "- Memory Efficiency: ...\n- Latency: ...\n- Throughput: ...\n- Quality: ...\n- Infrastructure Requirement: ..."}}
+prior_tech_research는 앞선 기술 조사 노드가 저장한 overview, approach, limitations, trl, sources입니다. 이를 평가의 출발점으로 삼아 기술의 접근 방식과 알려진 한계를 도메인 질문에 연결하세요.
+technology_excerpts는 평가 대상 기술 논문에서 다시 확인한 발췌문입니다. claim과 source_ids에는 이 발췌문으로 직접 검증한 기술 적용 결과만 적으세요. 선행 조사 요약이나 URL만으로 측정 수치를 확정하지 마세요.
+domain_excerpts는 도메인 참고 논문에서 검색한 발췌문입니다. PagedAttention은 서빙 메모리 관리의 기준, LongBench는 장문맥 품질 평가의 기준을 설명하는 용도로만 쓰세요.
+domain_context에는 이번 지표의 평가 기준이나 워크로드에 대해 domain_excerpts가 뒷받침하는 내용을 적고, domain_source_ids에는 그 발췌 ID만 적으세요. 도메인 참고 논문의 성능 수치를 KIVI 또는 ITME의 성능으로 돌려 쓰지 마세요.
+선행 조사 내용과 원문 발췌가 다른 경우 원문에서 확인된 범위만 주장하고 차이를 limitation에 적으세요.
+숫자, 품질, 상용화 여부를 추측하지 말고 직접 측정과 조건부 추론을 구별하세요. 서로 다른 실험 조건의 기술 간 수치를 직접 비교하거나 우열을 판정하지 마세요.
+설계 참고 문헌의 수치는 이번 RAG 발췌문에 포함되지 않았다면 결과의 근거로 인용하지 마세요.
+
+구조화된 결과의 claim에는 해당 지표의 간결한 판단을, source_ids에는 technology_excerpts 중 그 판단을 직접 뒷받침하는 발췌 ID만 적으세요.
+conditions에는 모델, 하드웨어, 문맥 길이, 워크로드 등 실험 조건을 적고, limitation에는 이 근거만으로 판단할 수 없는 점을 적으세요.
+기술 근거가 부족하면 claim을 '확인된 근거 없음'으로, source_ids를 빈 목록으로 반환하세요. 도메인 근거가 부족하면 domain_context를 빈 문자열로, domain_source_ids를 빈 목록으로 반환하세요. 발췌문이 있어도 질문과 무관하면 근거로 사용하지 마세요.
