@@ -6,7 +6,7 @@
 ## Overview
 - Objective: 하나의 병목(KV cache)을 상반된 방식으로 푸는 두 기술을 복수 관점에서 비교 평가
 - Method: LangGraph Multi-Agent (fan-out/fan-in) + Agentic RAG
-- Tools: LangGraph, LangChain, Chroma, HuggingFace Embeddings
+- Tools: LangGraph, LangChain, FAISS, HuggingFace Embeddings
 
 ## Selected Technologies
 - SW : KIVI — 양자화 계열 대표 베이스라인, 공개 자료/구현체가 많아 RAG·시장·도메인 자료 확보 용이
@@ -22,13 +22,15 @@
   5개 세부 지표로 구조화 (Cloud/Data Center Long-context LLM Serving 기준)
 - 이해관계자 에이전트는 RAG 대신 웹 검색 + 일반 지식으로 Cloud/DC 사업자, 개발자, HW/메모리
   업체, 서버 OEM, 투자업계 관점을 다룸
-- 병렬(fan-out) 평가 후 평가종합 에이전트가 관점 간(TRL·시장성·이해관계자·도메인) 상충 지점을 정리
+- 병렬(fan-out) 평가 후 근거 충분성 Check → 부족한 관점만 Query Transformation을 켠
+  재검색 1회 → 평가종합 에이전트가 관점 간(TRL·시장성·이해관계자·도메인) 상충 지점을 정리
 - 확증편향 방지: 우열 판정 금지를 모든 프롬프트에 명시, 관점별 에이전트 완전 분리
 
 ## Tech Stack
 - Framework: LangGraph
-- LLM/Generator: OpenAI (기본 `gpt-4o-mini`, `.env`의 `LLM_MODEL`로 교체 가능)
-- Retrieval: Chroma (로컬, 논문별 collection 분리)
+- LLM/Generator: OpenAI (기본 `gpt-5-mini`, `.env`의 `LLM_MODEL`로 교체 가능)
+- Vector DB: FAISS (로컬, 논문별 인덱스 분리 — `faiss_index/cand_{id}`)
+- Retrieval: Baseline = Dense Retrieval + Top-K / 개선 = Query Transformation + RRF 융합
 - Embedding: `BAAI/bge-m3` (오픈소스, 팀 최종 결정) — 한영 cross-lingual retrieval,
   최대 8192 토큰 지원, Dense/Sparse/Multi-vector 지원으로 향후 Hybrid Search 확장 가능
   (현재 구현은 `langchain_huggingface`를 통한 Dense 임베딩만 사용 — Sparse/ColBERT까지 쓰는
@@ -37,11 +39,11 @@
 ## Directory Structure
 ```
 ├── data/                  # 선정 논문 PDF를 여기에 저장 (파일명은 candidates.py 참고)
-├── agents/                # Agent 모듈 (선정/조사/시장/이해관계자/도메인/종합/보고서)
-├── rag/                   # PDF 로딩 + 벡터스토어 구축/검색
+├── agents/                # Agent 모듈 (선정/조사/시장/이해관계자/도메인/근거검증/종합/보고서)
+├── rag/                   # PDF 로딩, 벡터스토어 구축/검색, 질의 변환, Retrieval 평가
 ├── prompts/               # 에이전트별 프롬프트 템플릿
-├── outputs/               # 생성된 평가 보고서(.md) 저장
-├── chroma_db/             # 벡터스토어 영속 저장 (자동 생성)
+├── outputs/               # 생성된 평가 보고서 / RAG 평가 결과(.md) 저장
+├── faiss_index/           # 벡터스토어 영속 저장 (자동 생성)
 ├── candidates.py          # Doc Pool 후보 기술 메타데이터
 ├── state.py               # LangGraph State 스키마
 ├── graph.py               # 그래프 구조 정의
@@ -61,27 +63,49 @@ cp .env.example .env   # OPENAI_API_KEY 채우기
 ```bash
 python app.py
 python app.py --domain "OnDevice AI"
+
+# Retrieval 평가 (Hit Rate@5 / MRR@5 / 정성 평가)
+python -m rag.evaluate
+python -m rag.evaluate --k 5
 ```
+
+## RAG Retrieval 평가
+`rag/evaluate.py`는 한국어 질의 14개(KIVI 7 / ITME 7)로 동일 조건에서 두 전략을 비교한다.
+정답 라벨은 chunk 수작업 라벨링 대신 원문에 실제 등장하는 gold keyword 집합으로 대체했고,
+검색된 chunk가 해당 키워드를 모두 포함하면 정답 근거로 간주한다.
+
+| 전략 | Hit Rate@5 | MRR@5 |
+| --- | --- | --- |
+| Baseline (Dense Top-K) | 0.857 | 0.693 |
+| Query Transformation + RRF | 0.929 | 0.744 |
+
+Baseline이 놓치던 질의(예: "PCIe 대역폭의 성능 영향")가 질의 변환 후 Top-3에 들어왔고,
+Hit Rate@5·MRR@5가 모두 향상되어 개선 판단 기준을 충족했다. 따라서 질의 변환은 근거가
+부족할 때 수행하는 재검색 경로에 적용한다.
 
 ## Agents
 - 🔍 기술 조사 에이전트 (RAG): 선정 논문 원문에서 개요/접근/한계 + TRL(기술성숙도) 추출
 - 📊 시장 평가 에이전트 (RAG): 원문 내 시장/채택 언급 + 일반 지식 보완
 - 🤝 이해관계자 평가 에이전트 (No RAG): 웹 검색 + 일반 지식
 - 🏭 도메인 평가 에이전트 (RAG): Cloud/DC Long-context Serving 5개 지표로 적합성 평가
+- 🔁 근거 충분성 Check: "확인 불가" 류 표지를 세어 부족한 관점만 재검색(최대 1회)으로 되돌림
 - ⚖️ 평가 종합 에이전트: TRL·시장성·이해관계자·도메인 관점 간 공통점/상충점/시사점 정리
 - 📝 보고서 생성 에이전트: SUMMARY~REFERENCE 구조의 최종 보고서 작성
 
 ## Architecture
 ```mermaid
 graph TD
-    A[기술 선정] --> B[기술 조사]
-    B --> C[시장성 평가]
+    A[기술 선정] --> B[기술 조사 + RAG]
+    B --> C[시장성 평가 + RAG]
     B --> D[이해관계자 평가]
-    B --> E[도메인 평가]
-    C --> F[평가 종합]
+    B --> E[도메인 평가 + RAG]
+    C --> F{근거 충분성 Check}
     D --> F
     E --> F
-    F --> G[평가 보고서 생성]
+    F -- 부족 --> H[재검색 + Query Transformation]
+    H --> F
+    F -- 충분 / 재검색 1회 소진 --> G[평가 종합]
+    G --> I[평가 보고서 생성]
 ```
 
 ## Contributors

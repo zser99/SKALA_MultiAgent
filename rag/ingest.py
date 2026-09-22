@@ -1,4 +1,4 @@
-"""선정된 후보 논문 PDF -> 청크 분할 -> 임베딩 -> Chroma 벡터스토어.
+"""선정된 후보 논문 PDF -> 청크 분할 -> 임베딩 -> FAISS 벡터스토어.
 
 총 200페이지 한도(과제 조건)를 넘지 않도록, 로딩 시 페이지 수를 세어 경고한다.
 PDF가 data/ 에 없으면 예외 대신 warning을 남기고 None을 반환해 그래프가 계속
@@ -7,13 +7,13 @@ PDF가 data/ 에 없으면 예외 대신 warning을 남기고 None을 반환해 
 import os
 from typing import Optional
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_chroma import Chroma
 
 from llm import get_embeddings
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
-PERSIST_DIR = os.path.join(os.path.dirname(__file__), "..", "chroma_db")
+PERSIST_DIR = os.path.join(os.path.dirname(__file__), "..", "faiss_index")
 MAX_TOTAL_PAGES = 200
 
 
@@ -26,16 +26,15 @@ def _load_pdf(filename: str):
     return pages, None
 
 
-def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[Chroma], Optional[str]]:
+def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[FAISS], Optional[str]]:
     """단일 후보 논문에 대한 벡터스토어를 만들거나, 이미 있으면 재사용한다."""
-    collection = f"cand_{candidate_id}"
-    persist_path = os.path.join(PERSIST_DIR, collection)
+    index_path = os.path.join(PERSIST_DIR, f"cand_{candidate_id}")
 
-    if os.path.exists(persist_path) and os.listdir(persist_path):
-        vs = Chroma(
-            collection_name=collection,
-            embedding_function=get_embeddings(),
-            persist_directory=persist_path,
+    if os.path.exists(os.path.join(index_path, "index.faiss")):
+        # 인덱스와 함께 저장되는 docstore가 pickle이라 명시적 허용이 필요하다.
+        # 이 파일은 항상 로컬에서 직접 생성한 것이므로 외부 입력이 아니다.
+        vs = FAISS.load_local(
+            index_path, get_embeddings(), allow_dangerous_deserialization=True
         )
         return vs, None
 
@@ -61,10 +60,6 @@ def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[Chroma
         c.metadata["source_id"] = candidate_id
         c.metadata["source_file"] = filename
 
-    vs = Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        collection_name=collection,
-        persist_directory=persist_path,
-    )
+    vs = FAISS.from_documents(documents=chunks, embedding=embeddings)
+    vs.save_local(index_path)
     return vs, warning

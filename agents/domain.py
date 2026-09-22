@@ -16,9 +16,15 @@ QUERY = (
 )
 
 
-def _domain_one(candidate: dict, domain_focus: str) -> str:
+def _domain_one(candidate: dict, domain_focus: str, transform: bool = False) -> str:
     vs, _ = build_vectorstore(candidate["id"], candidate["file"])
-    context = retrieve_context(vs, QUERY, k=5) if vs else ""
+    context = (
+        retrieve_context(
+            vs, QUERY, k=8 if transform else 5, transform=transform, title=candidate["title"]
+        )
+        if vs
+        else ""
+    )
     prompt = load_prompt("domain").format(
         title=candidate["title"],
         domain_focus=domain_focus,
@@ -30,9 +36,11 @@ def _domain_one(candidate: dict, domain_focus: str) -> str:
 
 
 def domain_node(state: dict) -> dict:
+    # 재검색 라운드(retry_count>0)에서는 Query Transformation을 켜고 K를 넓힌다.
+    transform = state.get("retry_count", 0) > 0
     domain_focus = state.get("domain_focus") or DEFAULT_DOMAIN
-    sw_summary = _domain_one(state["selected_sw"], domain_focus)
-    hw_summary = _domain_one(state["selected_hw"], domain_focus)
+    sw_summary = _domain_one(state["selected_sw"], domain_focus, transform)
+    hw_summary = _domain_one(state["selected_hw"], domain_focus, transform)
     return {
         "domain_focus": domain_focus,
         "domain_result": {"sw": sw_summary, "hw": hw_summary},

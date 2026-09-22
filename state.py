@@ -50,7 +50,11 @@ class GraphState(TypedDict, total=False):
     stakeholder_result: PerspectiveResult  # No RAG
     domain_result: PerspectiveResult       # RAG
 
-    # 4. 종합 / 보고서
+    # 4. 근거 충분성 검증 (Evidence Check -> 최대 1회 재검색)
+    evidence_sufficient: bool
+    retry_count: int
+
+    # 5. 종합 / 보고서
     synthesis: Dict[str, Any]
     final_report: str
 

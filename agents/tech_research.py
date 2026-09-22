@@ -11,7 +11,7 @@ from agents.utils import load_prompt, parse_json_response
 QUERY = "이 기술의 핵심 접근 방식, 적용 범위, 그리고 한계점 또는 트레이드오프"
 
 
-def _research_one(candidate: dict, warnings: list) -> dict:
+def _research_one(candidate: dict, warnings: list, transform: bool = False) -> dict:
     vs, warning = build_vectorstore(candidate["id"], candidate["file"])
     if warning:
         warnings.append(warning)
@@ -26,7 +26,9 @@ def _research_one(candidate: dict, warnings: list) -> dict:
             "sources": [candidate["url"]],
         }
 
-    context = retrieve_context(vs, QUERY, k=5)
+    context = retrieve_context(
+        vs, QUERY, k=8 if transform else 5, transform=transform, title=candidate["title"]
+    )
     prompt = load_prompt("tech_research").format(
         title=candidate["title"], year=candidate["year"], context=context
     )
@@ -37,7 +39,9 @@ def _research_one(candidate: dict, warnings: list) -> dict:
 
 
 def tech_research_node(state: dict) -> dict:
+    # 재검색 라운드(retry_count>0)에서는 Query Transformation을 켜고 K를 넓힌다.
+    transform = state.get("retry_count", 0) > 0
     warnings = list(state.get("warnings", []))
-    sw = _research_one(state["selected_sw"], warnings)
-    hw = _research_one(state["selected_hw"], warnings)
+    sw = _research_one(state["selected_sw"], warnings, transform)
+    hw = _research_one(state["selected_hw"], warnings, transform)
     return {"tech_research": {"sw": sw, "hw": hw}, "warnings": warnings}
