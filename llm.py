@@ -33,5 +33,8 @@ def get_embeddings() -> HuggingFaceEmbeddings:
     global _embeddings
     if _embeddings is None:
         model_name = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
-        _embeddings = HuggingFaceEmbeddings(model_name=model_name)
+        _embeddings = HuggingFaceEmbeddings(
+    model_name=model_name,
+    model_kwargs={"device": "cpu"},
+)
     return _embeddings
