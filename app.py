@@ -24,7 +24,7 @@ def main():
 
     initial_state = {}
     if args.domain:
-        initial_state["domain_focus"] = args.domain
+        initial_state["domain"] = args.domain
 
     print("[graph] 실행 시작...")
     final_state = app.invoke(initial_state)

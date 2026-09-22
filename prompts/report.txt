@@ -60,7 +60,7 @@ HW 기술 조사:
 - HW: {stakeholder_hw}
 
 도메인:
-{domain_focus}
+{domain}
 
 도메인 평가:
 - SW: {domain_sw}

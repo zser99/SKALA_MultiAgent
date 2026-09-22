@@ -125,7 +125,7 @@ _SYNTHESIS = {
 MOCK_STATE = {
     "sw_pool": [_SW],
     "hw_pool": [_HW],
-    "domain_focus": "Cloud/Data Center 환경의 Long-context LLM Serving",
+    "domain": "Cloud/Data Center 환경의 Long-context LLM Serving",
     "selected_sw": _SW,
     "selected_hw": _HW,
     "selection_rationale": _SELECTION_RATIONALE,

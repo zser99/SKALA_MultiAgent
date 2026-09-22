@@ -67,7 +67,6 @@ class GraphState(TypedDict, total=False):
     sw_pool: List[TechCandidate]
     hw_pool: List[TechCandidate]
     domain: str
-    domain_focus: str
 
     # 1. 기술 선정
     selected_sw: TechCandidate
