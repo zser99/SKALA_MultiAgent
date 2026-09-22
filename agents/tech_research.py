@@ -215,8 +215,4 @@ def tech_research_node(state: dict) -> dict:
     warnings = list(state.get("warnings", []))
     sw = _research_one(state["selected_sw"], warnings, widen)
     hw = _research_one(state["selected_hw"], warnings, widen)
-    print(sw)
-    print("=========================")
-    print(hw)
-    sys.exit()
     return {"tech_research": {"sw": sw, "hw": hw}, "warnings": warnings}

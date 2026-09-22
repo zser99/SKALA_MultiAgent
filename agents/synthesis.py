@@ -21,7 +21,7 @@ def synthesis_node(state: dict) -> dict:
         market_hw=state["market_result"]["hw"],
         stakeholder_sw=state["stakeholder_result"]["sw"],
         stakeholder_hw=state["stakeholder_result"]["hw"],
-        domain_focus=state.get("domain_focus", ""),
+        domain_focus=state.get("domain_focus") or state.get("domain", ""),
         domain_sw=state["domain_result"]["sw"],
         domain_hw=state["domain_result"]["hw"],
         evidence_sufficient=state.get("evidence_sufficient", False),
