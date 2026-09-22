@@ -186,24 +186,75 @@ def format_reference(src: dict) -> str:
     return f"(형식 미확인) {src.get('id') or src.get('url') or src.get('title')}"
 
 
-def render_references(state: dict, registry: Optional[dict] = None) -> str:
-    """REFERENCE 섹션 본문을 만든다. 유형별로 묶어 정렬한다."""
+def render_references(
+    state: dict,
+    registry: Optional[dict] = None,
+    report_md: Optional[str] = None,
+) -> str:
+    """실제로 본문에서 인용된 출처만 REFERENCE로 만든다."""
     sources = collect_sources(state, registry)
-    if not sources:
-        return "(활용한 자료 없음)"
 
-    groups = {"paper": [], "patent": [], "web": [], "unknown": []}
-    for src in sources:
-        groups.get(src.get("type", "unknown"), groups["unknown"]).append(src)
+    if report_md is not None:
+        sources = [
+            source
+            for source in sources
+            if (
+                source.get("id")
+                and f"[{source['id']}]" in report_md
+            )
+            or (
+                source.get("url")
+                and source["url"] in report_md
+            )
+        ]
 
-    labels = {"paper": "논문", "patent": "특허", "web": "기타(웹)", "unknown": "확인 필요"}
-    blocks: list[str] = []
-    for kind in ("paper", "patent", "web", "unknown"):
-        items = groups[kind]
+        if not sources:
+            return "(활용한 자료 없음)"
+
+    groups = {
+        "paper": [],
+        "patent": [],
+        "web": [],
+        "unknown": [],
+    }
+
+    for source in sources:
+        source_type = source.get("type", "unknown")
+        groups.get(
+            source_type,
+            groups["unknown"],
+        ).append(source)
+
+    labels = {
+        "paper": "논문",
+        "patent": "특허",
+        "web": "기타(웹)",
+        "unknown": "확인 필요",
+    }
+
+    blocks = []
+
+    for source_type in (
+        "paper",
+        "patent",
+        "web",
+        "unknown",
+    ):
+        items = groups[source_type]
+
         if not items:
             continue
-        lines = [f"- {format_reference(src)}" for src in items]
-        blocks.append(f"**{labels[kind]}**\n" + "\n".join(lines))
+
+        lines = [
+            f"- {format_reference(source)}"
+            for source in items
+        ]
+
+        blocks.append(
+            f"**{labels[source_type]}**\n"
+            + "\n".join(lines)
+        )
+
     return "\n\n".join(blocks)
 
 

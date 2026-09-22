@@ -10,7 +10,7 @@ from agents.report import (
 from tests.mock_state import MOCK_STATE
 # 정상 보고서 샘플
 VALID_REPORT_BODY = """## 0. SUMMARY
-요약
+요약 [src_kivi] [src_itme]
 
 ## 1. 분석 배경
 배경
@@ -149,6 +149,49 @@ class ReportTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "필수 목차"):
             report_node(make_valid_state())
+
+    @patch("agents.report.get_llm")
+    def test_orphan_citation_is_rejected(
+        self,
+        mock_get_llm,
+    ):
+        report_with_unknown_source = VALID_REPORT_BODY.replace(
+            "[src_itme]",
+            "[src_not_registered]",
+        )
+
+        mock_get_llm.return_value.invoke.return_value = SimpleNamespace(
+            content=report_with_unknown_source
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "등록되지 않은 출처",
+        ):
+            report_node(make_valid_state())
+
+    @patch("agents.report.get_llm")
+    def test_uncited_source_is_excluded_from_references(
+        self,
+        mock_get_llm,
+    ):
+        report_using_only_kivi = VALID_REPORT_BODY.replace(
+            " [src_itme]",
+            "",
+        )
+
+        mock_get_llm.return_value.invoke.return_value = SimpleNamespace(
+            content=report_using_only_kivi
+        )
+
+        result = report_node(make_valid_state())
+        reference_section = result["final_report"].split(
+            "## 7. REFERENCE",
+            maxsplit=1,
+        )[1]
+
+        self.assertIn("KIVI", reference_section)
+        self.assertNotIn("ITME", reference_section)
 
 
        

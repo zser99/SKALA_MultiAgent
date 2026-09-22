@@ -4,7 +4,11 @@ REFERENCE는 LLM이 아닌 코드가 생성한다.
 """
 import json
 import re
-from agents.references import audit_sources, render_references
+from agents.references import (
+    audit_sources,
+    find_orphan_citations,
+    render_references,
+)
 from agents.utils import load_prompt
 from llm import get_llm
 
@@ -102,6 +106,16 @@ def _validate_report_structure(report: str) -> None:
             + ", ".join(missing)
         )
 
+def _validate_citations(report: str, state: dict) -> None:
+    """본문에서 인용한 출처 ID가 State에 존재하는지 검사한다."""
+    orphan_citations = find_orphan_citations(report, state)
+
+    if orphan_citations:
+        raise ValueError(
+            "본문에 등록되지 않은 출처가 인용됐습니다: "
+            + ", ".join(orphan_citations)
+        )
+
 def _source_identifier(source: dict) -> str:
     return str(
         source.get("id")
@@ -166,8 +180,13 @@ def report_node(state: dict) -> dict:
     report_body = _strip_reference_section(str(response.content))
     # 검증 호출
     _validate_report_structure(report_body)
+    _validate_citations(report_body, state)
 
-    reference_text = render_references(state)
+    reference_text = render_references(
+        state,
+        report_md=report_body,
+    )
+
     final_report = (
         f"{report_body}\n\n"
         f"## 7. REFERENCE\n\n"
