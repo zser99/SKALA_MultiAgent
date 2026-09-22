@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 
-load_dotenv()
+load_dotenv(override=True)  # .env 파일이 있으면 환경변수 덮어쓰기
 
 _llm = None
 _embeddings = None
