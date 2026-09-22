@@ -23,8 +23,7 @@ def synthesis_node(state: dict) -> dict:
         stakeholder_sw=stakeholder["sw"],
         stakeholder_hw=stakeholder["hw"],
         stakeholder_summary=stakeholder.get("summary", "제공되지 않음"),
-        # app.py의 domain_focus와 설계 State의 domain을 모두 허용한다.
-        domain_focus=state.get("domain_focus") or state.get("domain") or "미지정",
+        domain=state.get("domain") or "미지정",
         domain_sw=state["domain_result"]["sw"],
         domain_hw=state["domain_result"]["hw"],
         evidence_sufficient=state.get("evidence_sufficient", False),

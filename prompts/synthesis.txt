@@ -28,7 +28,7 @@ HW: {stakeholder_hw}
 {stakeholder_summary}
 
 [도메인 평가]
-대상 도메인: {domain_focus}
+대상 도메인: {domain}
 SW: {domain_sw}
 HW: {domain_hw}
 

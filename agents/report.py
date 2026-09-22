@@ -179,7 +179,7 @@ def report_node(state: dict) -> dict:
             "hw",
             "공개된 근거로 확인하기 어렵다",
         ),
-        domain_focus=state.get("domain_focus") or state.get(
+        domain=state.get(
             "domain",
             "Cloud/Data Center 환경의 Long-context LLM Serving",
         ),
