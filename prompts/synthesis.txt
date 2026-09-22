@@ -24,8 +24,11 @@ HW: {market_hw}
 SW: {stakeholder_sw}
 HW: {stakeholder_hw}
 
+[이해관계자 비교 요약]
+{stakeholder_summary}
+
 [도메인 평가]
-대상 도메인: {domain_focus}
+대상 도메인: {domain}
 SW: {domain_sw}
 HW: {domain_hw}
 

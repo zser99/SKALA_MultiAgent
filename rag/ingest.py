@@ -78,7 +78,6 @@ def _load_pdf(filename: str):
     pages = loader.load()
     return pages, None
 
-
 # --- 1) 페이지 정리 -----------------------------------------------------------
 def _clean_pages(pages: list[Document]) -> list[list[tuple[str, int]]]:
     """페이지별 (line, page) 목록. 러닝 헤더·페이지 번호·arXiv 워터마크를 제거한다."""
@@ -391,9 +390,13 @@ def _build_chunks(pages: list[Document], candidate_id: str, filename: str) -> li
     return docs
 
 
-def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[FAISS], Optional[str]]:
-    """단일 후보 논문에 대한 벡터스토어를 만들거나, 이미 있으면 재사용한다."""
-    index_path = os.path.join(PERSIST_DIR, f"cand_{candidate_id}_{INDEX_VERSION}")
+def _build_vectorstore(
+    index_name: str,
+    source_id: str,
+    filenames: list[str],
+) -> tuple[Optional[FAISS], Optional[str]]:
+    """여러 PDF를 하나의 FAISS 벡터스토어로 만들거나, 이미 있으면 재사용한다."""
+    index_path = os.path.join(PERSIST_DIR, f"{index_name}_{INDEX_VERSION}")
 
     if os.path.exists(os.path.join(index_path, "index.faiss")):
         # 인덱스와 함께 저장되는 docstore가 pickle이라 명시적 허용이 필요하다.
@@ -403,23 +406,49 @@ def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[FAISS]
         )
         return vs, None
 
-    pages, warning = _load_pdf(filename)
-    if pages is None:
-        # PDF도 없고 기존 벡터스토어도 없음 -> 임베딩 모델 로드 자체를 건너뛴다.
+    warnings = []
+    chunks: list[Document] = []
+    total_pages = 0
+    for filename in filenames:
+        pages, warning = _load_pdf(filename)
+        if warning:
+            warnings.append(warning)
+        if not pages:
+            continue
+
+        remaining = MAX_TOTAL_PAGES - total_pages
+        if remaining <= 0:
+            warnings.append(
+                f"[RAG] {index_name} 이 과제 한도({MAX_TOTAL_PAGES}p)를 초과해 "
+                f"data/{filename} 은 인덱싱하지 않았습니다."
+            )
+            continue
+        if len(pages) > remaining:
+            warnings.append(
+                f"[RAG] {index_name} 이 과제 한도({MAX_TOTAL_PAGES}p)를 초과합니다. "
+                f"data/{filename} 은 앞 {remaining}페이지만 사용합니다."
+            )
+            pages = pages[:remaining]
+
+        total_pages += len(pages)
+        chunks.extend(_build_chunks(pages, source_id, filename))
+
+    warning = "\n".join(warnings) if warnings else None
+    if not chunks:
         return None, warning
 
-    embeddings = get_embeddings()
-
-    if len(pages) > MAX_TOTAL_PAGES:
-        warning = (
-            f"[RAG] {filename} 이 {len(pages)}페이지로 과제 한도(200p)를 초과합니다. "
-            f"앞 {MAX_TOTAL_PAGES}페이지만 사용합니다."
-        )
-        pages = pages[:MAX_TOTAL_PAGES]
-
-    chunks = _build_chunks(pages, candidate_id, filename)
-
-    vs = FAISS.from_documents(documents=chunks, embedding=embeddings)
+    vs = FAISS.from_documents(documents=chunks, embedding=get_embeddings())
     vs.save_local(index_path)
     return vs, warning
 
+
+def build_vectorstore(candidate_id: str, filename: str) -> tuple[Optional[FAISS], Optional[str]]:
+    """단일 후보 논문에 대한 벡터스토어를 만들거나, 이미 있으면 재사용한다."""
+    return _build_vectorstore(f"cand_{candidate_id}", candidate_id, [filename])
+
+
+def build_vectorstore_from_files(
+    index_name: str, source_id: str, filenames: list[str]
+) -> tuple[Optional[FAISS], Optional[str]]:
+    """여러 PDF를 하나의 벡터스토어로 묶어 만든다."""
+    return _build_vectorstore(index_name, source_id, filenames)
