@@ -118,7 +118,11 @@ def _json_text(value: Any, max_chars: int = 80_000) -> str:
 
 # 이해관계자별 관점과 평가 기준을 시스템 프롬프트에 넣을 문자열로 구성
 def _stakeholder_context_text() -> str:
-    blocks: list[str] = []
+    blocks: list[str] = [
+        "핵심 질문은 분석 방향을 정하는 지침이며 필수 체크리스트가 아니다. "
+        "확보한 자료로 답할 수 있는 범위에서 장단점을 분석하고, 미확인 부분은 한계로 남긴다. "
+        "비용·도입 속도·위험도는 근거 없이 단정하지 않으며, 사실과 추론을 구분한다."
+    ]
     for stakeholder, config in STAKEHOLDER_RUBRIC.items():
         blocks.append(f"[{stakeholder}]\n관점: {config['perspective']}")
         for c in config["criteria"]:
@@ -127,6 +131,8 @@ def _stakeholder_context_text() -> str:
                 f"  관찰 항목: {', '.join(c['items'])}\n"
                 f"  참고 프레임: {', '.join(c['references'])}"
             )
+            for question in c.get("questions", []):
+                blocks.append(f"  핵심 질문: {question}")
     return "\n".join(blocks)
 
 # 이해관계자와 평가 기준 이름으로 해당 기준의 상세 내용을 조회할 사전 생성
