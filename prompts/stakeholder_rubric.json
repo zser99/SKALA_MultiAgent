@@ -1,0 +1,202 @@
+{
+  "Cloud / Data Center 사업자": {
+    "perspective": "대규모 LLM Inference 인프라를 구축·운영하는 사업자의 관점. 동일 인프라에서의 처리 용량, 자원·비용 효율, 향후 수요 증가에 대한 확장성과 운영 복잡도를 중요하게 본다.",
+    "criteria": [
+      {
+        "criterion": "처리량 효율",
+        "items": [
+          "Throughput 변화 (Tokens/s, Requests/s/QPS)",
+          "처리 Capacity 변화 (Batch Size, 동시 요청 수)",
+          "Latency 제약 하 처리 성능 (TTFT, TPOT 조건에서의 처리량)"
+        ],
+        "references": [
+          "MLPerf Inference — latency constraint를 만족하면서 얻는 LLM inference throughput 평가 방식 참고"
+        ]
+      },
+      {
+        "criterion": "자원·비용 효율",
+        "items": [
+          "GPU 및 GPU Memory 자원 요구량 변화",
+          "Power / Energy 변화",
+          "Cost/Token 또는 동일 Workload의 Infrastructure Cost 변화"
+        ],
+        "references": [
+          "MLPerf Power — ML workload의 power/energy 측정 방식 참고",
+          "Cost/Token은 직접 근거가 존재할 때만 사용"
+        ]
+      },
+      {
+        "criterion": "확장성·운영성",
+        "items": [
+          "Capacity 확장성 (Context Length, KV Cache Capacity)",
+          "Resource 확장성 (Memory Expansion, Pooling, Scale-up)",
+          "운영 복잡도 (추가 Device 관리, Monitoring, 시스템 구성)"
+        ],
+        "references": [
+          "CXL Specification — memory expansion/pooling 구조 참고",
+          "DMTF Redfish — 데이터센터 장치 관리·모니터링 인터페이스 참고"
+        ]
+      }
+    ]
+  },
+  "LLM Serving 개발자": {
+    "perspective": "Data Center 환경에서 LLM Inference Serving Stack을 개발·운영하는 엔지니어의 관점. 기존 Serving Framework와의 호환성, 통합·유지보수 부담, Runtime 성능 영향을 중요하게 본다.",
+    "criteria": [
+      {
+        "criterion": "호환성",
+        "items": [
+          "Model / Inference Framework 지원 범위",
+          "GPU / CUDA / Driver 지원 범위",
+          "기존 Serving Stack / API 사용 가능성"
+        ],
+        "references": [
+          "NVIDIA CUDA Compatibility — CUDA Toolkit/Driver/Application 호환 범위 참고",
+          "ISO/IEC 25010 Compatibility — SW 호환성 평가 관점 참고"
+        ]
+      },
+      {
+        "criterion": "통합·유지보수성",
+        "items": [
+          "Kernel / KV Cache Manager / Scheduler 코드 변경 범위",
+          "별도 Runtime / Driver / Module 추가 요구",
+          "Framework / GPU 업데이트 시 재수정 부담"
+        ],
+        "references": [
+          "ISO/IEC 25010 Maintainability — 변경·유지보수 용이성 관점 참고"
+        ]
+      },
+      {
+        "criterion": "성능 효율",
+        "items": [
+          "Latency 변화 (TTFT, TPOT, End-to-End Latency)",
+          "Throughput 변화",
+          "Optimization Overhead (Quant/Dequant, Prefetch, Transfer)"
+        ],
+        "references": [
+          "MLPerf Inference — latency/throughput 평가 방식 참고",
+          "NVIDIA Nsight Compute — kernel/memory traffic/stall 분석 방식 참고"
+        ]
+      }
+    ]
+  },
+  "GPU / Accelerator 업체": {
+    "perspective": "Data Center용 AI Accelerator와 GPU를 설계·공급하는 업체의 관점. GPU HBM 효율, Compute/Memory Resource 활용도, 기존 GPU Architecture와의 호환성을 중요하게 본다.",
+    "criteria": [
+      {
+        "criterion": "GPU Memory 효율",
+        "items": [
+          "KV Cache Memory Footprint 변화",
+          "GPU / HBM Memory Pressure 변화",
+          "동일 VRAM에서 가능한 Batch / Context 증가"
+        ],
+        "references": [
+          "NVIDIA Nsight Compute Memory Workload Analysis — GPU memory traffic/bandwidth bottleneck 분석 방식 참고"
+        ]
+      },
+      {
+        "criterion": "Compute / Memory 활용도",
+        "items": [
+          "Compute Utilization (SM 활용도)",
+          "Memory Utilization (HBM Bandwidth, Memory Throughput)",
+          "Stall / Memory Bottleneck 변화"
+        ],
+        "references": [
+          "NVIDIA Nsight Compute Speed Of Light / Compute Workload / Memory Workload Analysis 참고"
+        ]
+      },
+      {
+        "criterion": "Architecture 호환성",
+        "items": [
+          "신규 GPU Hardware 기능 요구",
+          "CUDA / Kernel / Driver 변경 요구",
+          "지원 가능한 GPU Generation 범위"
+        ],
+        "references": [
+          "NVIDIA CUDA Compatibility — CUDA/Driver/GPU software stack 호환 범위 참고"
+        ]
+      }
+    ]
+  },
+  "Memory / CXL 업체": {
+    "perspective": "Data Center용 Memory Device, CXL Memory Expansion, Memory Fabric 기술을 개발·공급하는 업체의 관점. KV Capacity 확장성, GPU↔외부 Memory 데이터 이동 성능, 산업 표준과의 상호운용성을 중요하게 본다.",
+    "criteria": [
+      {
+        "criterion": "용량 확장성",
+        "items": [
+          "추가 가능한 Memory Capacity",
+          "대용량 KV Cache 수용 가능성",
+          "Memory Pooling / Tiering 가능성"
+        ],
+        "references": [
+          "CXL Specification — memory expansion/pooling 및 host-device memory 구조 참고"
+        ]
+      },
+      {
+        "criterion": "Memory / Fabric 성능",
+        "items": [
+          "Memory / Fabric Bandwidth",
+          "Memory / KV Access Latency",
+          "Data Movement Overhead"
+        ],
+        "references": [
+          "CXL Specification — CXL link 및 memory/fabric 구조 참고",
+          "PCIe / NVMe 관련 Specification — 외부 장치 transport 구조 참고"
+        ]
+      },
+      {
+        "criterion": "상호운용성",
+        "items": [
+          "CPU / GPU / Memory Device 연동성",
+          "CXL / PCIe 기반 표준 Interface 활용성",
+          "Vendor / Device 종속성"
+        ],
+        "references": [
+          "CXL Specification — host/accelerator/memory 표준 인터페이스 참고",
+          "DMTF CXL-to-Redfish Mapping — CXL 관리 계층 interoperability 참고"
+        ]
+      }
+    ]
+  },
+  "Server OEM / 시스템 업체": {
+    "perspective": "Data Center용 AI Server를 설계하고 상용 제품으로 공급하는 Server OEM/시스템 업체의 관점. 서버 Hardware 변경 범위, 기존 관리 환경과의 통합, 상용 제품 수준의 검증 부담을 중요하게 본다.",
+    "criteria": [
+      {
+        "criterion": "시스템 변경 규모",
+        "items": [
+          "추가 Hardware 요구 (CXL Device, SSD, FPGA)",
+          "Server Topology 변경 (PCIe, Board, Riser)",
+          "Power / Cooling / Firmware 변경"
+        ],
+        "references": [
+          "OCP Modular Hardware System(MHS) — 서버 모듈 interface/form factor 통합 관점 참고",
+          "CXL Specification — CXL device/interconnect 통합 구조 참고"
+        ]
+      },
+      {
+        "criterion": "상호운용·관리성",
+        "items": [
+          "Device Inventory 및 인식",
+          "Health / Resource Monitoring",
+          "Remote / Firmware Management"
+        ],
+        "references": [
+          "DMTF Redfish — multi-vendor remote management interface 참고",
+          "DMTF CXL-to-Redfish Mapping — CXL device/port/fabric 관리 모델 참고"
+        ]
+      },
+      {
+        "criterion": "제품화·검증 난이도",
+        "items": [
+          "Hardware / Firmware 통합 검증",
+          "RAS / 장애 대응 검증",
+          "Compliance / 상용화 검증"
+        ],
+        "references": [
+          "CXL Specification — CXL device/interconnect/RAS 요구사항 참고",
+          "Redfish Interoperability Profiles — management interoperability/conformance 참고",
+          "OCP MHS — 서버 모듈 통합 관점 보조 참고"
+        ]
+      }
+    ]
+  }
+}
