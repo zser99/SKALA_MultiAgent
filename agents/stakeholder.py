@@ -430,6 +430,7 @@ def _render_summary(batch: StakeholderBatchAssessment, sw_title: str, hw_title: 
 def _collect_sources(state: GraphState, batch: StakeholderBatchAssessment) -> list[str]:
     sources: list[str] = []
     tech_research = state.get("tech_research", {}) or {}
+
     for side in ("sw", "hw"):
         report = tech_research.get(side, {}) or {}
         for url in report.get("sources", []) or []:
@@ -456,6 +457,7 @@ def stakeholder_node(state: GraphState) -> dict[str, PerspectiveResult]:
 
     # 기술조사 에이전트가 전달한 근거로 관점별 기준을 병렬 평가한다.
     tech_research_text = _json_text(tech_research)
+    tech_research_text += "\n[조정자 작업 지시]\n" + state.get("worker_instruction", "")
 
     def rag_prompt(stakeholder: str) -> str:
         return f"""

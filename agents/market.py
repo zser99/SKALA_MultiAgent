@@ -34,17 +34,18 @@ def _format_market_result(result: dict) -> str:
     return "\n".join(parts)
 
 
-def _market_one(candidate: dict, transform: bool = False) -> tuple[str, str, list[str]]:
+def _market_one(candidate: dict, transform: bool = False, instruction: str = "") -> tuple[str, str, list[str]]:
     files = [candidate["file"], *candidate.get("market_files", [])]
     vs, _ = build_vectorstore_from_files(f"market_{candidate['id']}", candidate["id"], files)
     context = (
         retrieve_context(
-            vs, QUERY, k=7 if transform else 4, transform=transform, title=candidate["title"]
+            vs, QUERY + " " + instruction, k=7 if transform else 4, transform=transform, title=candidate["title"]
         )
         if vs
         else ""
     )
     prompt = load_prompt("market").format(title=candidate["title"], context=context or "(검색된 발췌 없음)")
+    prompt += "\n[조정자 작업 지시]\n" + instruction
     resp = get_llm(temperature=0.3).invoke(prompt)
     result = parse_json_response(resp.content)
     return (
@@ -57,8 +58,9 @@ def _market_one(candidate: dict, transform: bool = False) -> tuple[str, str, lis
 def market_node(state: dict) -> dict:
     # 재검색 라운드(retry_count>0)에서는 Query Transformation을 켜고 K를 넓힌다.
     transform = state.get("retry_count", 0) > 0
-    sw_summary, sw_basis, sw_limitations = _market_one(state["selected_sw"], transform)
-    hw_summary, hw_basis, hw_limitations = _market_one(state["selected_hw"], transform)
+    instruction = state.get("worker_instruction", "")
+    sw_summary, sw_basis, sw_limitations = _market_one(state["selected_sw"], transform, instruction)
+    hw_summary, hw_basis, hw_limitations = _market_one(state["selected_hw"], transform, instruction)
     return {
         "market_result": {
             "sw": sw_summary,

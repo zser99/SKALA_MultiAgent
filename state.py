@@ -3,7 +3,35 @@
 병렬로 실행되는 시장성/이해관계자/도메인 평가 에이전트가 서로 다른 키에 쓰도록 설계하여
 fan-out/fan-in 시 State 충돌이 없도록 함 (설계 문서 D. 그래프 설계(안) 참고).
 """
-from typing import TypedDict, List, Dict, Any, Literal, Union
+from typing import Annotated, TypedDict, List, Dict, Any, Literal, Union
+
+
+def merge_worker_results(current: dict, updates: dict) -> dict:
+    return {**current, **updates}
+
+
+class WorkItem(TypedDict):
+    task_id: str
+    worker: Literal["market", "stakeholder", "domain"]
+    instruction: str
+    reason: str
+    attempt: int
+
+
+class WorkerResult(TypedDict):
+    worker: str
+    status: Literal["completed", "failed"]
+    attempt: int
+    payload: Dict[str, Any]
+    error: str | None
+    evidence_path: str
+
+
+class EvalVerdict(TypedDict):
+    passed: bool
+    checks: Dict[str, bool]
+    reasons: List[str]
+    rework_targets: List[str]
 
 
 class TechCandidate(TypedDict):
@@ -60,9 +88,28 @@ class PerspectiveResult(TypedDict, total=False):
     hw: str
     summary: str
     sources: List[SourceItem]
+    limitations: Dict[str, List[str]]
+    basis: Dict[str, str]
+    domain_analysis: Dict[str, Any]
+    domain_sources: List[Dict[str, Any]]
 
 
 class GraphState(TypedDict, total=False):
+    evaluation_request: str
+    required_perspectives: List[str]
+    run_id: str
+    plan: List[WorkItem]
+    worker_results: Annotated[Dict[str, WorkerResult], merge_worker_results]
+    round_count: int
+    max_rounds: int
+    step_count: int
+    max_steps: int
+    last_error: str | None
+    termination_reason: str
+    eval_result: EvalVerdict
+    quality_feedback: List[str]
+    generation_error: str | None
+    task: WorkItem
     # 입력 / 후보 풀
     sw_pool: List[TechCandidate]
     hw_pool: List[TechCandidate]

@@ -40,11 +40,14 @@ def search(
     if vectorstore is None:
         return []
     if not transform:
-        return vectorstore.similarity_search(query, k=k)
-
-    queries = transform_query(query, title=title)
-    ranked_lists = [vectorstore.similarity_search(q, k=k) for q in queries]
-    return _rrf_fuse(ranked_lists, k)
+        documents = vectorstore.similarity_search(query, k=k)
+    else:
+        queries = transform_query(query, title=title)
+        ranked_lists = [vectorstore.similarity_search(query_text, k=k) for query_text in queries]
+        documents = _rrf_fuse(ranked_lists, k)
+    from agents.worker import record_evidence
+    record_evidence(documents)
+    return documents
 
 
 def retrieve_context(

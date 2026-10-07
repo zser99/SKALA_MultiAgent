@@ -90,6 +90,7 @@ def domain_node(state: dict) -> dict:
     }
     judge = get_llm(temperature=0).with_structured_output(Assessment)
     prompt_template = load_prompt("domain")
+    prompt_template += "\n[조정자 작업 지시]\n" + state.get("worker_instruction", "").replace("{", "{{").replace("}", "}}")
     analysis = {
         "domain": domain,
         "technologies": {side: candidate["title"] for side, candidate in candidates.items()},
@@ -133,6 +134,7 @@ def domain_node(state: dict) -> dict:
                 f"{candidate['title']} {domain} {description} "
                 f"{prior_report.get('approach', '')[:240]} experiment result tradeoff"
             )
+            query += " " + state.get("worker_instruction", "")
             docs = search(
                 vectorstores[side], query, k=8 if transform else 5,
                 transform=transform, title=candidate["title"],

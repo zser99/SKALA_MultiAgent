@@ -313,6 +313,8 @@ def report_node(state: dict) -> dict:
         allowed_source_ids=_allowed_source_ids(state),
     )
 
+    if state.get("quality_feedback"):
+        prompt += "\n[품질 평가 보완 지시]\n" + "\n".join(state["quality_feedback"])
     response = get_llm(temperature=0.2).invoke(prompt)
     report_body = _normalize_citations(_strip_reference_section(str(response.content)))
 
