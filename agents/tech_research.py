@@ -57,6 +57,16 @@ K_PER_FIELD = 5        # 필드 안에서 RRF 융합 후 남기는 청크 수
 K_WIDEN = 2            # 재검색 라운드·evidence 재시도에서 K를 넓히는 폭
 MAX_REFINE_ROUNDS = 1  # "미확인" 항목 재검색 횟수
 RRF_K = 60
+OUT_OF_PAPER_SCOPE = (
+    "customer",
+    "commercial",
+    "production",
+    "deployment",
+    "prebuilt binary",
+    "multi-gpu",
+    "multi gpu",
+    "distributed",
+)
 
 
 def _tech_short_name(title: str) -> str:
@@ -156,6 +166,14 @@ def _as_keywords(value) -> list[str]:
     return [v.strip() for v in value if isinstance(v, str) and v.strip()]
 
 
+def _researchable_keywords(value) -> list[str]:
+    """논문 안에서 실제로 확인 가능할 법한 미확인 항목만 재검색한다."""
+    return [
+        keyword for keyword in _as_keywords(value)
+        if not any(term in keyword.casefold() for term in OUT_OF_PAPER_SCOPE)
+    ]
+
+
 def _research_one(candidate: dict, warnings: list, widen: bool = False) -> dict:
     vs, warning = build_vectorstore(candidate["id"], candidate["file"])
     if warning:
@@ -188,7 +206,7 @@ def _research_one(candidate: dict, warnings: list, widen: bool = False) -> dict:
         resp = get_llm(temperature=0.2).invoke(prompt)
         result = parse_json_response(resp.content)
 
-        unverified = _as_keywords(result.pop("unverified", []))
+        unverified = _researchable_keywords(result.pop("unverified", []))
         if not unverified or round_no >= MAX_REFINE_ROUNDS:
             break
         # 미확인 항목 키워드로 1회 재검색 후 재판정
