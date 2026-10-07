@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -17,6 +19,15 @@ from pydantic import BaseModel, Field
 from agents.utils import load_prompt
 from llm import get_llm
 from state import GraphState, PerspectiveResult
+
+
+# 공용 LLM 설정은 그대로 두고, 이 노드에서만 추론 강도를 낮춘 사본을 사용해 응답 지연을 줄인다.
+def get_fast_llm():
+    llm = get_llm()
+    if llm.model_name.startswith(("gpt-5", "o1", "o3", "o4")):
+        effort = os.getenv("STAKEHOLDER_REASONING_EFFORT", "low")
+        return llm.model_copy(update={"reasoning_effort": effort})
+    return llm
 
 
 # 실행 위치와 관계없이 프로젝트의 평가 기준 파일을 읽는다.
@@ -58,15 +69,41 @@ class StakeholderConclusion(BaseModel):
     conclusion: str = Field(min_length=1)
 
 
-# 다섯 관점의 종합 판단을 한 번에 받는 내부 출력 형식
-class StakeholderConclusions(BaseModel):
-    conclusions: list[StakeholderConclusion]
-
-
 CONCLUSION_HEADING = "[이해관계자별 최종 종합 결과]"
+CONCLUSION_PROMPT = load_prompt("stakeholder_conclusion").strip()
 
 
-# 최종 평가의 장단점과 근거를 종합하여 관점별 판단을 한 문단씩 생성한다.
+# 관점 하나의 최종 평가를 종합하여 판단 한 문단을 생성한다.
+def _generate_conclusion(
+    stakeholder: str,
+    batch: StakeholderBatchAssessment,
+    sw_title: str,
+    hw_title: str,
+    tech_research: dict[str, Any],
+    web_result: dict[str, Any],
+) -> str:
+    model = get_fast_llm().with_structured_output(StakeholderConclusion)
+    payload = {
+        "sw_title": sw_title,
+        "hw_title": hw_title,
+        "rubric": {stakeholder: STAKEHOLDER_RUBRIC[stakeholder]},
+        "assessment": [
+            item.model_dump() for item in batch.criteria if item.stakeholder == stakeholder
+        ],
+        "tech_research": tech_research,
+        "web_evidence": {"results": web_result.get("results", [])},
+    }
+    result = model.invoke([
+        SystemMessage(content=CONCLUSION_PROMPT + f"\n\n이번 요청에서는 '{stakeholder}' 관점 하나의 conclusion만 반환한다."),
+        HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
+    ])
+    conclusion = result.conclusion.strip()
+    if not conclusion:
+        raise ValueError(f"'{stakeholder}' 관점의 종합 판단이 비어 있습니다.")
+    return conclusion
+
+
+# 다섯 관점의 종합 판단을 병렬로 생성하여 하나의 문자열로 정리한다.
 def _generate_conclusions(
     batch: StakeholderBatchAssessment,
     sw_title: str,
@@ -74,26 +111,13 @@ def _generate_conclusions(
     tech_research: dict[str, Any],
     web_result: dict[str, Any],
 ) -> str:
-    model = get_llm().with_structured_output(StakeholderConclusions)
-    payload = {
-        "sw_title": sw_title,
-        "hw_title": hw_title,
-        "rubric": STAKEHOLDER_RUBRIC,
-        "assessment": batch.model_dump(),
-        "tech_research": tech_research,
-        "web_evidence": {"results": web_result.get("results", [])},
-    }
-    result = model.invoke([
-        SystemMessage(content=load_prompt("stakeholder_conclusion").strip()),
-        HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
-    ])
-    conclusions = {item.stakeholder: item.conclusion.strip() for item in result.conclusions}
-    if (
-        len(result.conclusions) != len(STAKEHOLDER_RUBRIC)
-        or set(conclusions) != set(STAKEHOLDER_RUBRIC)
-        or not all(conclusions.values())
-    ):
-        raise ValueError("종합 판단은 정의된 다섯 관점에 대해 각각 한 개씩 필요합니다.")
+    stakeholders = list(STAKEHOLDER_RUBRIC)
+    with ThreadPoolExecutor(max_workers=len(stakeholders)) as pool:
+        results = pool.map(
+            lambda name: _generate_conclusion(name, batch, sw_title, hw_title, tech_research, web_result),
+            stakeholders,
+        )
+        conclusions = dict(zip(stakeholders, results))
 
     lines = [CONCLUSION_HEADING]
     for stakeholder in STAKEHOLDER_RUBRIC:
@@ -109,7 +133,8 @@ STAKEHOLDER_SYSTEM_PROMPT = load_prompt("stakeholder_system").strip()
 # 자료를 프롬프트용 JSON 문자열로 변환 & 최대 글자 수를 넘으면 자르기
 def _json_text(value: Any, max_chars: int = 80_000) -> str:
     try:
-        text = json.dumps(value, ensure_ascii=False, indent=2, default=str)
+        # 들여쓰기 없이 직렬화해 입력 토큰을 줄인다.
+        text = json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
     except Exception:
         text = str(value)
     if len(text) > max_chars:
@@ -117,13 +142,15 @@ def _json_text(value: Any, max_chars: int = 80_000) -> str:
     return text
 
 # 이해관계자별 관점과 평가 기준을 시스템 프롬프트에 넣을 문자열로 구성
-def _stakeholder_context_text() -> str:
+def _stakeholder_context_text(only: str | None = None) -> str:
     blocks: list[str] = [
         "핵심 질문은 분석 방향을 정하는 지침이며 필수 체크리스트가 아니다. "
         "확보한 자료로 답할 수 있는 범위에서 장단점을 분석하고, 미확인 부분은 한계로 남긴다. "
         "비용·도입 속도·위험도는 근거 없이 단정하지 않으며, 사실과 추론을 구분한다."
     ]
     for stakeholder, config in STAKEHOLDER_RUBRIC.items():
+        if only is not None and stakeholder != only:
+            continue
         blocks.append(f"[{stakeholder}]\n관점: {config['perspective']}")
         for c in config["criteria"]:
             blocks.append(
@@ -134,6 +161,32 @@ def _stakeholder_context_text() -> str:
             for question in c.get("questions", []):
                 blocks.append(f"  핵심 질문: {question}")
     return "\n".join(blocks)
+
+# 관점 하나의 세 평가 기준만 담은 시스템 프롬프트로 LLM 분석을 실행한다.
+def _assess_one(stakeholder: str, user_prompt: str) -> list[CriterionAssessment]:
+    model = get_fast_llm().with_structured_output(StakeholderBatchAssessment)
+    system_prompt = STAKEHOLDER_SYSTEM_PROMPT.format(
+        stakeholder_context=_stakeholder_context_text(only=stakeholder)
+    )
+    result = model.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ])
+    return [item for item in result.criteria if item.stakeholder == stakeholder]
+
+
+# 출력이 길수록 응답이 느려지므로 관점별로 나누어 병렬 호출한 뒤 결과를 합친다.
+def _assess_per_stakeholder(
+    stakeholders: list[str],
+    build_prompt: Callable[[str], str],
+) -> StakeholderBatchAssessment:
+    if not stakeholders:
+        return StakeholderBatchAssessment(criteria=[])
+    with ThreadPoolExecutor(max_workers=len(stakeholders)) as pool:
+        parts = pool.map(lambda name: _assess_one(name, build_prompt(name)), stakeholders)
+        criteria = [item for part in parts for item in part]
+    return StakeholderBatchAssessment(criteria=criteria)
+
 
 # 이해관계자와 평가 기준 이름으로 해당 기준의 상세 내용을 조회할 사전 생성
 def _criterion_lookup() -> dict[tuple[str, str], dict[str, Any]]:
@@ -395,41 +448,35 @@ def stakeholder_node(state: GraphState) -> dict[str, PerspectiveResult]:
     """기술조사 근거를 관점별로 평가하고 이해관계자 결과만 반환한다."""
     started_at = perf_counter()
     print("[stakeholder] 분석 시작", flush=True)
-    structured_model = get_llm().with_structured_output(StakeholderBatchAssessment)
-    system_prompt = STAKEHOLDER_SYSTEM_PROMPT.format(
-        stakeholder_context=_stakeholder_context_text()
-    )
     selected_sw = state.get("selected_sw", {}) or {}
     selected_hw = state.get("selected_hw", {}) or {}
     sw_title = selected_sw.get("title", "SW 후보 기술")
     hw_title = selected_hw.get("title", "HW 후보 기술")
     tech_research = state.get("tech_research", {}) or {}
 
-    # 기술조사 에이전트가 전달한 근거로 전체 기준을 평가한다.
-    rag_prompt = f"""
+    # 기술조사 에이전트가 전달한 근거로 관점별 기준을 병렬 평가한다.
+    tech_research_text = _json_text(tech_research)
+
+    def rag_prompt(stakeholder: str) -> str:
+        return f"""
 비교 기술:
 - SW: {sw_title}
 - HW: {hw_title}
 
 upstream RAG 기술 조사 결과(tech_research):
-{_json_text(tech_research)}
+{tech_research_text}
 
-위 자료를 최우선 근거로 사용하여 아래 5개 이해관계자 × 3개 평가 기준을 모두 분석하라.
+위 자료를 최우선 근거로 사용하여 '{stakeholder}' 관점의 3개 평가 기준을 모두 분석하라.
 각 기술별 observed_items 수에 따라 evidence_level을 판정하라.
 근거가 없는 세부 항목은 채우지 마라.
 
 반드시 STAKEHOLDER_RUBRIC에 정의된 정확한 stakeholder 이름과 criterion 이름을 사용하라.
 """.strip()
 
-    print("[stakeholder] 기술조사 결과 기반 관점별 LLM 분석 시작", flush=True)
+    print("[stakeholder] 기술조사 결과 기반 관점별 LLM 분석 시작 (관점별 병렬)", flush=True)
     step_started_at = perf_counter()
     try:
-        initial = structured_model.invoke(
-            [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=rag_prompt),
-            ]
-        )
+        initial = _assess_per_stakeholder(list(STAKEHOLDER_RUBRIC), rag_prompt)
     except Exception as exc:
         print(f"[stakeholder] 기술조사 결과 기반 관점별 LLM 분석 실패 ({type(exc).__name__})", flush=True)
         raise
@@ -488,16 +535,19 @@ upstream RAG 기술 조사 결과(tech_research):
                 print("[stakeholder] 검색 결과 없음 — 웹 보완 분석 생략, 기존 분석 유지", flush=True)
 
         if web_result.get("results"):
-            web_prompt = f"""
+            web_result_text = _json_text(web_result, max_chars=50_000)
+
+            def web_prompt(stakeholder: str) -> str:
+                return f"""
 비교 기술:
 - SW: {sw_title}
 - HW: {hw_title}
 
-RAG에서 직접 근거가 부족했던 기준:
-{_json_text(missing, max_chars=20_000)}
+RAG에서 직접 근거가 부족했던 '{stakeholder}' 관점의 기준:
+{_json_text([s for s in missing if s["stakeholder"] == stakeholder], max_chars=20_000)}
 
 보완 웹 검색 결과(단 1회):
-{_json_text(web_result, max_chars=50_000)}
+{web_result_text}
 
 규칙:
 - 위 '근거 부족 기준'만 재평가한다.
@@ -509,15 +559,11 @@ RAG에서 직접 근거가 부족했던 기준:
 - 절대적 우위, 점수, 순위를 만들지 않는다.
 """.strip()
 
-            print("[stakeholder] 웹 보완 LLM 분석 시작", flush=True)
+            print("[stakeholder] 웹 보완 LLM 분석 시작 (관점별 병렬)", flush=True)
             step_started_at = perf_counter()
             try:
-                web_update = structured_model.invoke(
-                    [
-                        SystemMessage(content=system_prompt),
-                        HumanMessage(content=web_prompt),
-                    ]
-                )
+                missing_stakeholders = list(dict.fromkeys(s["stakeholder"] for s in missing))
+                web_update = _assess_per_stakeholder(missing_stakeholders, web_prompt)
             except Exception as exc:
                 print(f"[stakeholder] 웹 보완 LLM 분석 실패 ({type(exc).__name__})", flush=True)
                 raise
