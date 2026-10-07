@@ -195,6 +195,29 @@ class ReportTest(unittest.TestCase):
             report_node(make_valid_state())
 
     @patch("agents.report.get_llm")
+    def test_report_retries_once_when_citations_are_missing(
+        self,
+        mock_get_llm,
+    ):
+        draft_without_citations = (
+            VALID_REPORT_BODY
+            .replace(" [src_kivi]", "")
+            .replace(" [src_itme]", "")
+        )
+        mock_get_llm.return_value.invoke.side_effect = [
+            SimpleNamespace(content=draft_without_citations),
+            SimpleNamespace(content=VALID_REPORT_BODY),
+        ]
+
+        result = report_node(make_valid_state())
+
+        self.assertIn("[src_kivi]", result["final_report"])
+        self.assertEqual(mock_get_llm.return_value.invoke.call_count, 2)
+        repair_prompt = mock_get_llm.return_value.invoke.call_args.args[0]
+        self.assertIn("인용 보완 재생성", repair_prompt)
+        self.assertIn("src_kivi", repair_prompt)
+
+    @patch("agents.report.get_llm")
     def test_evidence_status_and_sources_are_passed_to_prompt(
         self,
         mock_get_llm,
@@ -218,7 +241,7 @@ class ReportTest(unittest.TestCase):
         self.assertIn("근거 부족 관점 존재", result["warnings"])
 
     @patch("agents.report.get_llm")
-    def test_uncited_source_is_excluded_from_references(
+    def test_all_project_pdf_sources_are_included_in_references(
         self,
         mock_get_llm,
     ):
@@ -238,7 +261,12 @@ class ReportTest(unittest.TestCase):
         )[1]
 
         self.assertIn("KIVI", reference_section)
-        self.assertNotIn("ITME", reference_section)
+        self.assertIn("ITME", reference_section)
+        self.assertIn("LongBench", reference_section)
+        self.assertIn("PagedAttention", reference_section)
+        self.assertIn("DistServe", reference_section)
+        self.assertIn("KV cache strategies", reference_section)
+        self.assertIn("Deployment-ready CXL Memory Expansion", reference_section)
 
 
        

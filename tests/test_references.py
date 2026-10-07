@@ -2,6 +2,7 @@ import unittest
 
 from agents.references import (
     audit_sources,
+    collect_project_pdf_sources,
     collect_sources,
     render_references,
 )
@@ -40,6 +41,23 @@ class ReferencesTest(unittest.TestCase):
         self.assertIn("**기타(웹)**", rendered)
         self.assertIn("KIVI", rendered)
         self.assertIn("ITME", rendered)
+
+    def test_all_existing_project_pdfs_have_structured_sources(self):
+        sources = collect_project_pdf_sources()
+
+        self.assertEqual(len(sources), 7)
+        self.assertEqual(
+            {source["file"] for source in sources},
+            {
+                "LongBench.pdf",
+                "PagedAttention.pdf",
+                "DistServe.pdf",
+                "hw_itme.pdf",
+                "market_hf_kv_cache.pdf",
+                "market_micron_amd_cxl_memory_expansion.pdf",
+                "sw_kivi.pdf",
+            },
+        )
 
     def test_unknown_source_is_reported_as_incomplete(self):
         state = {

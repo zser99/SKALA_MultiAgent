@@ -1,8 +1,9 @@
 """근거 부족 표지 Check + 추가 Retrieval (설계문서 7장/11장의 Evidence Check 분기).
 
 판정은 LLM에 다시 묻지 않는 규칙 기반 검사다. 기술·시장·도메인 RAG 결과의 필수 값
-누락과 ``확인 불가`` 류의 근거 부족 표지를 탐지한다. 이 검사는 출처의 정확성 자체를
-검증하는 기능은 아니다.
+누락과 검색 실패에 가까운 근거 부족 표지를 탐지한다. 이 검사는 출처의 정확성 자체를
+검증하는 기능은 아니다. 단, 공개 자료로 확인되지 않는 운영·시장 지표를 분석 한계로
+남기는 정상적인 "확인 불가" 표현은 재검색 실패로 보지 않는다.
 
 부족으로 판정되면 해당 RAG 관점만 Query Transformation을 켠 재검색으로 다시 돌린다.
 재검색은 최대 1회(MAX_RETRY)이며, 그 후에는 근거가 여전히 부족해도 종합 단계로 넘어간다.
@@ -15,26 +16,26 @@ from agents.tech_research import tech_research_node
 
 MAX_RETRY = 1
 
-# 원문·출처 자체가 없다는 표지는 한 번만 나타나도 재검색이 필요하다.
+# 원문·출처 자체가 없거나 검색 결과가 비어 있다는 표지는 한 번만 나타나도 재검색이 필요하다.
 CRITICAL_MARKERS = (
-    "확인 불가",
     "발췌 없음",
+    "검색된 발췌 없음",
     "원문 미확보",
     "출처 없음",
 )
 
-# 도메인 평가처럼 지표별로 서술하는 결과에서는 일부 지표의 근거 부족이 있을 수 있다.
-# 같은 결과 안에서 완화 표지가 두 번 이상 나타날 때 재검색 대상으로 판단한다.
+# 일부 지표의 단순한 "확인 불가"는 보고서 한계로 남길 수 있으므로 제외한다.
+# 아래 표지는 검색이 실제로 실패했거나 입력 근거 자체가 비어 있음을 더 강하게 시사할 때만 쓴다.
 SOFT_MARKERS = (
-    "근거가 부족",
-    "근거 부족",
-    "확인되지 않",
+    "검색 실패",
+    "검색 결과 없음",
+    "직접 근거 없음",
 )
 MIN_SOFT_MARKERS = 2
 
-# 도메인 평가는 5개 기준을 다루므로 단일 세부 기준의 근거 누락은 최종 보고서에
-# 한계로 남길 수 있다. 두 개 이상의 기술·기준 조합이 비어 있을 때 재검색한다.
-MIN_DOMAIN_EVIDENCE_GAPS = 2
+# 도메인 평가는 5개 기준 x 2개 기술을 다루므로 일부 기준의 근거 누락은 최종 보고서의
+# 분석 한계로 남긴다. 과반에 가까운 조합이 비어 있을 때만 검색 자체가 약하다고 보고 재검색한다.
+MIN_DOMAIN_EVIDENCE_GAPS = 6
 
 
 def _marker_count(value: object, markers: tuple[str, ...]) -> int:
@@ -70,6 +71,23 @@ def _domain_has_evidence_gap(result: dict) -> bool:
     # 이전 형식의 결과와도 호환되도록 구조화된 정보가 없을 때만 문구를 검사한다.
     text = " ".join(str(result.get(side, "")) for side in ("sw", "hw"))
     return _has_evidence_gap(text)
+
+
+def _gap_details(state: dict, weak: list[str]) -> str:
+    """경고 메시지에 재검색 대상이 된 항목을 짧게 붙인다."""
+    details = []
+    if "market" in weak:
+        market = state.get("market_result") or {}
+        for side in ("sw", "hw"):
+            for line in str(market.get(side, "")).splitlines():
+                if _marker_count(line, CRITICAL_MARKERS + SOFT_MARKERS):
+                    details.append(f"market.{side}.{line.split(':', 1)[0].strip()}")
+    if "domain" in weak:
+        analysis = (state.get("domain_result") or {}).get("domain_analysis") or {}
+        for gap in analysis.get("evidence_gaps", []):
+            if isinstance(gap, dict):
+                details.append(f"domain.{gap.get('technology', '?')}.{gap.get('criterion', '?')}")
+    return f" (부족 항목: {', '.join(details)})" if details else ""
 
 
 def _weak_perspectives(state: dict) -> list[str]:
@@ -125,7 +143,10 @@ def evidence_check_node(state: dict) -> dict:
 
     if weak:
         status = "재검색 수행" if retry_count < MAX_RETRY else "재검색 한도 소진, 그대로 종합"
-        warnings.append(f"[evidence] 근거 부족 관점: {', '.join(weak)} -> {status}")
+        warnings.append(
+            f"[evidence] 근거 부족 관점: {', '.join(weak)} -> {status}"
+            f"{_gap_details(state, weak)}"
+        )
 
     return {
         "evidence_sufficient": not weak,
