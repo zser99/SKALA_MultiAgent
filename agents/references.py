@@ -14,6 +14,7 @@ State의 sources는 현재 두 가지 형태가 섞여 있다.
 둘 다 처리하되, dict 쪽이 정확한 표기를 만들 수 있으므로 각 에이전트 담당자에게
 tests/mock_state.py 의 SOURCE_REGISTRY 형태를 요청할 것.
 """
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -107,6 +108,21 @@ def collect_project_pdf_sources() -> list[dict]:
     ]
 
 
+def _default_registry() -> dict:
+    """등록된 원문을 파일명·출처 ID 어느 쪽으로 들어와도 찾을 수 있게 만든다.
+
+    기술조사 노드는 출처를 URL 문자열 하나로만 넘기므로(`sources: [url]`), 레지스트리
+    없이 정규화하면 서지정보가 빈 임시 출처가 된다. `_normalize`가 URL도 조회하므로
+    여기서는 키만 늘려 두면 된다. 이 레지스트리는 조회용이라 출처를 새로 추가하지 않는다.
+    """
+    registry: dict[str, dict] = {}
+    for filename, source in _PROJECT_PDF_SOURCES.items():
+        registry[filename] = source
+        if source.get("id"):
+            registry[str(source["id"])] = source
+    return registry
+
+
 def _is_incomplete_source(source: dict) -> bool:
     """출처의 필수 서지정보 누락 또는 임시 값을 검사한다."""
     if source.get("_incomplete"):
@@ -182,6 +198,7 @@ def collect_sources(
     include_project_pdfs: bool = False,
 ) -> list[dict]:
     """State 전체를 훑어 실제 사용된 출처를 모으고 중복을 제거한다."""
+    registry = registry or _default_registry()
     raw: list[Any] = []
 
     tech_research = state.get("tech_research") or {}
@@ -201,17 +218,18 @@ def collect_sources(
             candidate_id = str(cand.get("id") or cand["url"])
             if not candidate_id.startswith("src_"):
                 candidate_id = f"src_{candidate_id}"
-            raw.append(
-                {
-                    "id": candidate_id,
-                    "type": "paper",
-                    "authors": cand.get("authors", ""),
-                    "year": (cand.get("year") or "")[:4],
-                    "title": cand.get("title", ""),
-                    "venue": "arXiv preprint",
-                    "url": cand["url"],
-                }
-            )
+            candidate_source = {
+                "id": candidate_id,
+                "type": "paper",
+                "authors": cand.get("authors", ""),
+                "year": (cand.get("year") or "")[:4],
+                "title": cand.get("title", ""),
+                "venue": "arXiv preprint",
+                "url": cand["url"],
+            }
+            # 후보 목록에는 저자가 없다. 빈 값을 그대로 넘기면 병합에서 레지스트리의
+            # 저자명을 덮어쓰므로 채워진 항목만 남긴다.
+            raw.append({k: v for k, v in candidate_source.items() if v not in (None, "")})
 
     # 같은 문헌이 URL로도 들어오고 구조화된 dict로도 들어온다(기술 조사의 sources vs
     # selected_*의 원문). URL과 id 양쪽으로 묶고, 서지 정보가 더 채워진 쪽을 남긴다.
@@ -221,6 +239,25 @@ def collect_sources(
     def _completeness(src: dict) -> int:
         score = sum(1 for f in ("title", "authors", "year", "venue", "org", "date", "number") if src.get(f))
         return score - (5 if src.get("_incomplete") else 0)
+
+    def _merge_source(winner: dict, loser: dict) -> dict:
+        """두 출처를 합친다. winner의 값을 쓰되 빈 값은 loser의 값을 지우지 않는다."""
+        out = dict(loser)
+        for key, value in winner.items():
+            if key == "_incomplete":
+                continue
+            if value in (None, "") and out.get(key):
+                continue
+            out[key] = value
+
+        # `_incomplete`는 "서지정보를 못 찾은 임시 출처"라는 표시다. 실제 출처와 합쳐지면
+        # 더는 임시가 아니므로 떼어낸다. 이 표시가 남으면 _completeness가 계속 감점해
+        # 이후 병합에서 서지정보가 빈 쪽에 밀린다.
+        if winner.get("_incomplete") and loser.get("_incomplete"):
+            out["_incomplete"] = True
+        else:
+            out.pop("_incomplete", None)
+        return out
 
     for item in raw:
         if not _is_real_source(item):
@@ -235,10 +272,12 @@ def collect_sources(
             alias[k] = canonical
 
         current = merged.get(canonical)
-        if current is None or _completeness(src) > _completeness(current):
-            merged[canonical] = {**(current or {}), **src}
+        if current is None:
+            merged[canonical] = dict(src)
+        elif _completeness(src) > _completeness(current):
+            merged[canonical] = _merge_source(src, current)
         else:
-            merged[canonical] = {**src, **current}
+            merged[canonical] = _merge_source(current, src)
 
     return list(merged.values())
 
@@ -421,6 +460,26 @@ def find_orphan_citations(
         )
     }
     return sorted(cited - known)
+
+
+# 인용 자리에 쓰인 대괄호. 마크다운 링크 `[텍스트](url)`는 제외한다.
+_CITATION_BRACKET = re.compile(r"\[([^\[\]\n]{1,80})\](?!\()")
+_VALID_CITATION = re.compile(r"^src_[A-Za-z0-9_]+$")
+
+
+def find_malformed_citations(report_md: str) -> list[str]:
+    """`[src_xxx]` 형식을 벗어난 인용 표기를 찾는다.
+
+    `find_orphan_citations`는 `[src_...]`에만 걸리므로, 프롬프트의 예시 문구나 섹션
+    번호가 출처 자리에 들어간 `[실측 장비 §4.2.4]` 같은 표기는 검증을 그냥 통과한다.
+    """
+    return sorted(
+        {
+            text.strip()
+            for text in _CITATION_BRACKET.findall(report_md)
+            if not _VALID_CITATION.match(text.strip())
+        }
+    )
 
 
 def find_uncited_sources(report_md: str, state: dict, registry: Optional[dict] = None) -> list[str]:

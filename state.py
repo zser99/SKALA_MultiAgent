@@ -31,6 +31,7 @@ class EvalVerdict(TypedDict):
     passed: bool
     checks: Dict[str, bool]
     reasons: List[str]
+    rework_type: Literal["none", "report", "evidence"]
     rework_targets: List[str]
 
 

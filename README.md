@@ -90,24 +90,68 @@
 
 ## Architecture
 
-GitHub에서 아래 Mermaid 그래프를 다이어그램으로 확인할 수 있습니다.
-
 ```mermaid
 flowchart TD
-    START([START]) --> SELECT[기술 선정]
-    SELECT --> RESEARCH[기술 조사 Agent]
-    RESEARCH --> PLAN[Orchestrator: 구조화 계획]
-    PLAN --> DISPATCH{계획 기반 Send}
-    DISPATCH -->|선택된 작업만| WORKERS[시장 / 이해관계자 / 도메인 Workers]
-    DISPATCH -->|빈 계획| COLLECT[결과 취합]
-    WORKERS --> COLLECT
-    COLLECT --> SYNTH[평가 종합 Agent]
-    SYNTH --> REPORT[보고서 생성 Agent]
-    REPORT --> QUALITY[품질 평가: 규칙 + LLM Judge]
-    QUALITY -->|미달: 상한 이내| REWORK[재작업 회차 증가]
-    REWORK --> PLAN
-    QUALITY -->|통과 또는 상한 도달| FINISH[최종 판정 기록]
-    FINISH --> END([END])
+    START([START]) --> TR["기술 조사 Agent"]
+    TR --> ORC["<b>Orchestrator</b><br/>관점×기술 계획 · 보완 시 부족분만 지정"]
+
+    ORC -->|"Send × N"| MKT
+    ORC -->|"Send × N"| STK
+    ORC -->|"Send × N"| DOM
+
+    subgraph MKT["시장 평가"]
+        direction LR
+        M_SW["SW"]
+        M_HW["HW"]
+    end
+    subgraph STK["이해관계자 평가"]
+        direction LR
+        S_SW["SW"]
+        S_HW["HW"]
+    end
+    subgraph DOM["도메인 평가"]
+        direction LR
+        D_SW["SW"]
+        D_HW["HW"]
+    end
+
+    MKT --> CHK
+    STK --> CHK
+    DOM --> CHK
+
+    CHK["<b>근거 충분성 Check</b><br/>관점×기술별 판정"]
+    CHK -->|"부족 → 재배분(1회)"| ORC
+    CHK -->|"충분 · 한도 도달"| SYN["<b>평가 종합 Agent</b><br/>공통점 · 상충점 · 시사점"]
+
+    SYN --> RPT["보고서 생성 Agent"]
+    RPT --> QA["<b>품질 평가</b><br/>규칙 + LLM judge"]
+    QA -->|"중립성 미달 → 재작성"| RPT
+    QA -.->|"근거 미달 → Replan"| ORC
+    QA -->|"통과 · 한도 도달"| END([END])
+
+    classDef control fill:#FAECE7,stroke:#D85A30,color:#712B13
+    classDef agent fill:#FFFFFF,stroke:#B4B2A9,color:#2C2C2A
+    classDef group fill:#FAFAF8,stroke:#B4B2A9,stroke-dasharray:4 4,color:#444441
+
+    class ORC,CHK,QA control
+    class TR,SYN,RPT,M_SW,M_HW,S_SW,S_HW,D_SW,D_HW agent
+    class MKT,STK,DOM group
+```
+    
+    
+## Agent 실습: Orchestrator-Workers
+
+현재 `graph.py`는 아래 동적 구조를 사용합니다.
+
+```text
+기술 선정 → 기술 조사 → Orchestrator → Send(관점별 Workers)
+                                  ↓
+                      결과 취합 → 종합 → 보고서 → 품질 평가
+                                  ↑                 ├─ 근거 미달 → Orchestrator 재작업
+                                  │                 ├─ 보고서 문제 → 보고서 재작성
+                                  └─────────────────┘
+                                                    ↓ 통과/상한
+                                                      종료
 ```
 
 기술 선정·조사·종합·보고서 생성 순서는 의존성에 따라 고정됩니다.
@@ -146,7 +190,7 @@ pip install -r requirements.txt
 ```
 
 기존 `.venv`가 있다면 생성 단계를 생략합니다.
-프로젝트 루트의 `.env`에 필요한 값을 설정하세요. API 키와 `.env`는 커밋하지 않습니다.
+프로젝트 루트의 `.env`에 필요한 값을 설정하세요.
 
 ```dotenv
 OPENAI_API_KEY=your-openai-api-key
@@ -194,9 +238,7 @@ python -m unittest tests.test_orchestration tests.test_quality tests.test_eviden
 python -m rag.evaluate --k 5
 ```
 
-Mock 테스트 통과는 실제 LLM 선택이나 전체 실행의 품질 통과를 의미하지 않습니다.
 Retrieval 평가는 실제 검색과 질의 변환을 사용합니다.
-기존 `test_ingest`, `test_synthesis`의 API 정합성은 별도로 확인해야 하므로 전체 discover 통과를 보장하지 않습니다.
 
 ### 결과 확인
 
@@ -210,8 +252,7 @@ Retrieval 평가는 실제 검색과 질의 변환을 사용합니다.
 현재 보고서 양식은 0. SUMMARY부터 7. REFERENCE까지의 기술 평가 목차입니다.
 패턴·State 설계는 이 README에서, 실제 계획 이력과 최종 판정은 trace·quality.json에서 확인합니다.
 품질 미달 상한 종료 시 보고서에 품질 평가 한계를 추가합니다.
-설계 설명·실행 이력·최종 판정을 보고서 안에 모두 포함하는 양식은 추가 구현이 필요합니다.
-자동 출력은 Markdown이며 PDF 제출이 요구되면 별도 변환 후 페이지 수·표·인용을 검수합니다.
+
 
 LangSmith에서는 설정한 프로젝트의 `orchestrator-workers` 실행을 열고
 Orchestrator 출력의 `plan`, 공통 Worker 입력의 `task.worker`,

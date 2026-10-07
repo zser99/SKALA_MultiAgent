@@ -24,6 +24,15 @@ def validate_plan(plan: WorkerPlan, state: dict) -> None:
         raise ValueError("Duplicate worker or task ID")
     if any(worker not in WORKER_CAPABILITIES for worker in workers):
         raise ValueError("Unknown worker")
+    verdict = state.get("eval_result") or {}
+    if verdict and not verdict.get("passed", False):
+        rework_type = verdict.get("rework_type")
+        requested = set(verdict.get("rework_targets", []))
+        planned = set(workers)
+        if rework_type == "report" and planned:
+            raise ValueError("Report-only rework must not dispatch workers")
+        if rework_type == "evidence" and planned != requested:
+            raise ValueError("Rework plan must match quality rework targets")
     results = state.get("worker_results", {})
     for task in plan.tasks:
         previous_ids = {key for key, result in results.items()
@@ -104,12 +113,24 @@ def quality_router(state: dict) -> str:
     if (state.get("round_count", 0) >= state.get("max_rounds", 2)
             or state.get("step_count", 0) >= state.get("max_steps", 12)):
         return "finish"
-    return "rework"
+    if state["eval_result"].get("rework_type") == "evidence":
+        return "rework_workers"
+    return "rewrite_report"
 
 
 def rework_node(state: dict) -> dict:
     return {"round_count": state.get("round_count", 0) + 1,
             "retry_count": state.get("round_count", 0) + 1}
+
+
+def report_rework_node(state: dict) -> dict:
+    """검색 결과는 유지하고 품질 피드백만 반영해 보고서를 다시 생성한다."""
+    verdict = state.get("eval_result") or {}
+    return {
+        "round_count": state.get("round_count", 0) + 1,
+        "quality_feedback": verdict.get("reasons", []),
+        "generation_error": None,
+    }
 
 
 def finish_node(state: dict) -> dict:

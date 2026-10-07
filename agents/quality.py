@@ -13,6 +13,7 @@ class QualityAssessment(BaseModel):
     bias_control: bool
     coverage: bool
     reasons: list[str] = Field(default_factory=list)
+    rework_type: Literal["none", "report", "evidence"] = "none"
     rework_targets: list[Literal["market", "stakeholder", "domain"]] = Field(default_factory=list)
 
 
@@ -45,7 +46,9 @@ def quality_node(state: dict) -> dict:
              "중립성: 특정 기술 추천·우열 판정 금지. 편향 통제: 근거 편중·반대 근거 누락 검사. "
              "커버리지: 기술성숙도·시장성·이해관계자·도메인 네 관점의 실질 내용 검사. "
              "근거 없는 주장은 실패이며 미확인 사항은 한계로 구분해야 합니다. "
-             "재검색이 필요한 관점만 rework_targets에 넣고 표현·목차 문제만 있으면 빈 목록을 반환하세요."),
+             "재검색이 필요한 관점만 rework_targets에 넣고 rework_type을 evidence로 지정하세요. "
+             "표현·목차·인용 배치처럼 보고서만 고치면 되는 문제는 rework_type을 report로 지정하고 "
+             "rework_targets를 비우세요. 모든 기준을 통과하면 rework_type은 none이어야 합니다."),
             ("human", json.dumps({"report": report, "retrieved_evidence": evidence,
                                  "tech_research": state.get("tech_research"),
                                  "worker_results": {name: result["payload"] for name, result in
@@ -56,13 +59,28 @@ def quality_node(state: dict) -> dict:
                        ("groundedness", "neutrality", "bias_control", "coverage")})
         reasons.extend(assessment.reasons)
         targets = sorted(set(assessment.rework_targets) | set(failed))
+        judge_rework_type = assessment.rework_type
     except Exception as exception:
         checks["judge"] = False
         reasons.append(f"품질 Judge 실행 실패: {type(exception).__name__}")
         targets = failed
+        judge_rework_type = "evidence" if failed else "report"
     passed = all(checks.values())
+    if passed:
+        rework_type = "none"
+        targets = []
+    elif targets:
+        # Worker 실패나 Judge가 지정한 관점이 있으면 보고서 표현만으로 해결할 수 없다.
+        rework_type = "evidence"
+    else:
+        # evidence를 요청하면서 대상 관점을 지정하지 않은 응답은 실행할 수 없으므로
+        # 보고서 자체 보완으로 제한한다.
+        rework_type = "report"
+        if judge_rework_type == "evidence":
+            reasons.append("근거 재작업 대상이 지정되지 않아 보고서 보완으로 처리함")
     if not passed and not reasons:
         reasons.append("품질 기준 미달: " + ", ".join(name for name, value in checks.items() if not value))
     return {"eval_result": {"passed": passed, "checks": checks,
-                            "reasons": reasons, "rework_targets": targets},
+                            "reasons": reasons, "rework_type": rework_type,
+                            "rework_targets": targets},
             "step_count": state.get("step_count", 0) + 1}
