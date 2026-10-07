@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable, Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
+# 병렬 스레드에서도 LangSmith 추적 컨텍스트가 유지되어 노드 하위 실행으로 기록된다.
+from langchain_core.runnables.config import ContextThreadPoolExecutor
 from pydantic import BaseModel, Field
 
 from agents.utils import load_prompt
@@ -112,7 +113,7 @@ def _generate_conclusions(
     web_result: dict[str, Any],
 ) -> str:
     stakeholders = list(STAKEHOLDER_RUBRIC)
-    with ThreadPoolExecutor(max_workers=len(stakeholders)) as pool:
+    with ContextThreadPoolExecutor(max_workers=len(stakeholders)) as pool:
         results = pool.map(
             lambda name: _generate_conclusion(name, batch, sw_title, hw_title, tech_research, web_result),
             stakeholders,
@@ -182,7 +183,7 @@ def _assess_per_stakeholder(
 ) -> StakeholderBatchAssessment:
     if not stakeholders:
         return StakeholderBatchAssessment(criteria=[])
-    with ThreadPoolExecutor(max_workers=len(stakeholders)) as pool:
+    with ContextThreadPoolExecutor(max_workers=len(stakeholders)) as pool:
         parts = pool.map(lambda name: _assess_one(name, build_prompt(name)), stakeholders)
         criteria = [item for part in parts for item in part]
     return StakeholderBatchAssessment(criteria=criteria)
