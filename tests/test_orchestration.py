@@ -3,7 +3,9 @@ from unittest.mock import patch
 from copy import deepcopy
 
 from state import merge_worker_results
-from agents.orchestrator import orchestrator_node, dispatch_workers, WorkerPlan, validate_plan
+from agents.orchestrator import (
+    orchestrator_node, dispatch_workers, quality_router, WorkerPlan, validate_plan,
+)
 from tests.mock_state import MOCK_STATE
 from graph import build_graph, generate_report_node
 
@@ -29,7 +31,8 @@ class OrchestrationTest(unittest.TestCase):
         state.update(orchestrator_node(state))
         self.assertEqual(len(dispatch_workers(state)), 3)
         state["worker_results"] = {name: {"status": "completed"} for name in ("market", "stakeholder", "domain")}
-        state["eval_result"] = {"rework_targets": ["market"], "reasons": ["근거 보완"]}
+        state["eval_result"] = {"passed": False, "rework_type": "evidence",
+                                "rework_targets": ["market"], "reasons": ["근거 보완"]}
         state.update(orchestrator_node(state))
         self.assertEqual([task.arg["task"]["worker"] for task in dispatch_workers(state)], ["market"])
         state["eval_result"]["rework_targets"] = []
@@ -55,6 +58,30 @@ class OrchestrationTest(unittest.TestCase):
             validate_plan(self.make_plan(["market"]), {})
         with self.assertRaises(ValueError):
             validate_plan(self.make_plan(["market", "market"]), {})
+
+    def test_rework_plan_must_match_quality_targets(self):
+        state = {
+            "eval_result": {"passed": False, "rework_type": "evidence",
+                            "rework_targets": ["domain"], "reasons": []},
+            "required_perspectives": ["market", "stakeholder", "domain"],
+            "worker_results": {
+                name: {"worker": name, "status": "completed"}
+                for name in ("market", "stakeholder", "domain")
+            },
+        }
+        with self.assertRaises(ValueError):
+            validate_plan(self.make_plan(["market"]), state)
+        validate_plan(self.make_plan(["domain"]), state)
+
+    def test_quality_router_separates_report_and_worker_rework(self):
+        base = {"round_count": 0, "max_rounds": 2, "step_count": 1, "max_steps": 12}
+        self.assertEqual(quality_router({**base, "eval_result": {
+            "passed": False, "rework_type": "report", "rework_targets": [], "reasons": []
+        }}), "rewrite_report")
+        self.assertEqual(quality_router({**base, "eval_result": {
+            "passed": False, "rework_type": "evidence",
+            "rework_targets": ["market"], "reasons": []
+        }}), "rework_workers")
 
     def test_rework_preserves_task_identity(self):
         with self.assertRaises(ValueError):
@@ -83,6 +110,7 @@ class OrchestrationTest(unittest.TestCase):
             passed = not always_fail and state["round_count"] > 0
             return {"eval_result": {"passed": passed, "checks": {"groundedness": passed},
                                     "reasons": [] if passed else ["시장성 보완"],
+                                    "rework_type": "none" if passed else "evidence",
                                     "rework_targets": [] if passed else ["market"]},
                     "step_count": state["step_count"] + 1}
 

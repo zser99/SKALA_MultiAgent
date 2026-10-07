@@ -4,7 +4,7 @@ from state import GraphState
 from agents.tech_selection import tech_selection_node
 from agents.orchestrator import (
     orchestrator_node, dispatch_workers, collect_node, quality_router,
-    rework_node, finish_node,
+    rework_node, report_rework_node, finish_node,
 )
 from agents.worker import worker_node, research_node
 from agents.synthesis import synthesis_node
@@ -26,7 +26,8 @@ def build_graph(checkpointer=None):
         "tech_selection": tech_selection_node, "tech_research": research_node,
         "orchestrator": orchestrator_node, "worker": worker_node, "collect": collect_node,
         "synthesis": synthesis_node, "report": generate_report_node, "quality": quality_node,
-        "rework": rework_node, "finish": finish_node,
+        "rework_workers": rework_node, "rewrite_report": report_rework_node,
+        "finish": finish_node,
     }
     for name, node in nodes.items():
         graph.add_node(name, node)
@@ -38,7 +39,16 @@ def build_graph(checkpointer=None):
     graph.add_edge("collect", "synthesis")
     graph.add_edge("synthesis", "report")
     graph.add_edge("report", "quality")
-    graph.add_conditional_edges("quality", quality_router, {"finish": "finish", "rework": "rework"})
-    graph.add_edge("rework", "orchestrator")
+    graph.add_conditional_edges(
+        "quality",
+        quality_router,
+        {
+            "finish": "finish",
+            "rework_workers": "rework_workers",
+            "rewrite_report": "rewrite_report",
+        },
+    )
+    graph.add_edge("rework_workers", "orchestrator")
+    graph.add_edge("rewrite_report", "report")
     graph.add_edge("finish", END)
     return graph.compile(checkpointer=checkpointer)

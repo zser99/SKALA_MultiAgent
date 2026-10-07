@@ -30,6 +30,7 @@ class QualityTest(unittest.TestCase):
         model.side_effect = RuntimeError("offline")
         result = quality_node({"final_report": "## 7. REFERENCE", "worker_results": {}})
         self.assertFalse(result["eval_result"]["passed"])
+        self.assertEqual(result["eval_result"]["rework_type"], "report")
 
     @patch("agents.quality._citation_validation_error", return_value=None)
     @patch("agents.quality._validate_report_structure")
@@ -37,10 +38,24 @@ class QualityTest(unittest.TestCase):
     def test_judge_failure_target_is_preserved(self, model, structure, citations):
         model.return_value.with_structured_output.return_value.invoke.return_value = QualityAssessment(
             groundedness=False, neutrality=True, bias_control=True, coverage=True,
-            reasons=["시장성 근거 미지원"], rework_targets=["market"])
+            reasons=["시장성 근거 미지원"], rework_type="evidence",
+            rework_targets=["market"])
         result = quality_node({"final_report": "## 7. REFERENCE", "worker_results": {}})
         self.assertFalse(result["eval_result"]["passed"])
+        self.assertEqual(result["eval_result"]["rework_type"], "evidence")
         self.assertEqual(result["eval_result"]["rework_targets"], ["market"])
+
+    @patch("agents.quality._citation_validation_error", return_value=None)
+    @patch("agents.quality._validate_report_structure")
+    @patch("agents.quality.get_llm")
+    def test_report_only_failure_has_no_worker_target(self, model, structure, citations):
+        model.return_value.with_structured_output.return_value.invoke.return_value = QualityAssessment(
+            groundedness=True, neutrality=False, bias_control=True, coverage=True,
+            reasons=["우열 표현 수정 필요"], rework_type="report", rework_targets=[])
+        result = quality_node({"final_report": "## 7. REFERENCE", "worker_results": {}})
+        self.assertFalse(result["eval_result"]["passed"])
+        self.assertEqual(result["eval_result"]["rework_type"], "report")
+        self.assertEqual(result["eval_result"]["rework_targets"], [])
 
 
 if __name__ == "__main__":
