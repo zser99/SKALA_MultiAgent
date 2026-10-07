@@ -1,5 +1,74 @@
 # KV Cache 최적화 기술 다관점 평가 Agentic RAG
 
+## Agent 실습: Orchestrator-Workers
+
+현재 `graph.py`는 아래 동적 구조를 사용합니다. 아래 기존 RAG 설명의 고정
+fan-out/evidence 재검색 그래프는 이전 실습 구조이며 현재 실행 경로가 아닙니다.
+
+```text
+기술 선정 → 기술 조사 → Orchestrator → Send(관점별 Workers)
+                                  ↓
+                      결과 취합 → 종합 → 보고서 → 품질 평가
+                                  ↑                 ↓ 미달
+                                  └── Orchestrator ← 재작업
+                                                   ↓ 통과/상한
+                                                     종료
+```
+
+- Orchestrator는 LLM의 구조화 출력으로 작업 계획을 생성합니다. 요청, 선행 조사,
+  capability registry, 기존 결과와 품질 피드백으로 실행 대상을 선택합니다.
+  registry는 사용 가능한 기능 목록이지 자동 실행 목록이 아닙니다. Send는 계획만 읽습니다.
+  필수 세 관점의 커버리지를 검증하므로 최초에는 세 Worker가 필요하지만,
+  이후에는 부족한 관점만 선택하거나 보고서 문제만 있을 때 빈 계획을 반환할 수 있습니다.
+  현재 Worker 단위는 관점별 SW/HW 전체 평가이며 세부 지표별 분할 실행은 지원하지 않습니다.
+  미등록 Worker, 중복 작업, 커버리지 누락, 재작업 ID 변경을 거부합니다.
+  잘못된 계획은 한 번 보정 요청하며 두 번 실패하면 고정 계획으로 대체하지 않고 오류로 종료합니다.
+- Worker는 조정자 작업 지시와 선행 기술 조사 결과를 받고 독립 결과만 반환합니다.
+  Worker끼리 직접 호출하지 않습니다. 기존 내부 검색 보완은 유지합니다.
+- Hybrid 품질 평가는 목차/인용 ID 검사와 LLM Judge를 결합합니다. Judge는 실제
+  검색 발췌와 보고서를 대조하여 Groundedness, 중립성, 편향 통제, 네 관점
+  커버리지를 검사합니다. 인용 ID 존재만으로 Groundedness 통과를 보장하지 않습니다.
+- 기본 재작업 상한은 2회입니다. 실패하면 품질 미달을 명시한 보고서로 종료하며,
+  Judge 오류는 통과로 처리하지 않습니다. Worker 오류는 기존 결과 또는 판단 유보로
+  fallback하고 품질 단계에서 재작업 대상으로 표시합니다. 선행 기술 조사 실패는
+  실행 오류로 종료합니다.
+- Trade-off: 선택적 재작업으로 불필요한 반복을 줄이지만 Judge 비용/지연과
+  비결정성이 추가됩니다. LLM Planner도 비용과 비결정성을 추가하지만 계획을 저장하여
+  선택 근거를 추적합니다. 실행 가능한 범위는 등록된 세 관점의 기능으로 제한됩니다.
+
+### State 설계 근거
+
+| 항목 | 구현 |
+| --- | --- |
+| 제어/페이로드 | plan, round_count, step_count, last_error, termination_reason과 분석 결과 분리 |
+| 관측성 | 외부 trace.jsonl에 계획/사유/작업 상태/품질 판정 기록; LangSmith 표준 tracing 사용 |
+| 지속성 비용 | 검색 원문은 외부 evidence.json에 저장; State에는 경로와 최신 결과만 유지 |
+| 상관 | run_id를 출력 폴더, 외부 로그, LangGraph thread_id, LangSmith metadata에 연결 |
+| 재개/복구 | build_graph(checkpointer=...) 지원; 기본 CLI InMemorySaver는 같은 프로세스에서만 복구 가능 |
+| 동시 처리 | worker_results reducer가 task_id별 결과를 병합; 재작업 결과만 교체 |
+| 종료 보장 | round_count/max_rounds와 제어 step_count/max_steps 및 recursion_limit 사용 |
+
+### 추가 모듈 및 검증
+
+```text
+agents/orchestrator.py   계획, 동적 배분, 결과 취합, 종료
+agents/worker.py         기존 평가 노드 어댑터, 오류 fallback, 검색 근거 보존
+agents/quality.py        보고서 이후 Hybrid 품질 평가
+tests/test_orchestration.py  dynamic fan-out, 선택적 재작업, 상한 종료
+tests/test_quality.py        Judge 오류/품질 미달 검사
+```
+
+```bash
+python app.py
+python -m unittest tests.test_orchestration tests.test_quality
+```
+
+`.env`에 `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`를
+설정하면 LangSmith에 실행이 기록됩니다. 키는 커밋하지 않습니다.
+`outputs/<run_id>/`에는 로컬 trace.jsonl, 검색 발췌, quality.json이 저장됩니다.
+보고서는 기존 `outputs/report_*.md` 경로를 유지합니다.
+LangSmith 실제 캡처와 최대 10장 PDF 제출물은 별도 실행/편집이 필요합니다.
+
 KV Cache 메모리 병목을 해결하는 두 접근, **SW 압축(KIVI)**과 **HW 메모리 확장(ITME)**을
 동일한 Cloud/Data Center Long-context LLM Serving 환경에서 비교하는 프로젝트입니다.
 LangGraph 기반 Multi-Agent가 기술·시장성·이해관계자·도메인 관점의 근거를 각각 수집하고,

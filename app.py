@@ -7,6 +7,10 @@ Usage:
 import argparse
 import datetime
 import os
+import json
+from pathlib import Path
+from uuid import uuid4
+from langgraph.checkpoint.memory import InMemorySaver
 
 from graph import build_graph
 
@@ -20,14 +24,34 @@ def main():
     )
     args = parser.parse_args()
 
-    app = build_graph()
+    app = build_graph(checkpointer=InMemorySaver())
 
-    initial_state = {}
+    run_id = uuid4().hex
+    initial_state = {"run_id": run_id, "round_count": 0, "step_count": 0,
+                     "max_rounds": 2, "max_steps": 12, "worker_results": {}}
     if args.domain:
         initial_state["domain"] = args.domain
 
     print("[graph] 실행 시작...")
-    final_state = app.invoke(initial_state)
+    directory = Path(__file__).resolve().parent / "outputs" / run_id
+    directory.mkdir(parents=True, exist_ok=True)
+    config = {"recursion_limit": 60, "configurable": {"thread_id": run_id},
+              "run_name": "orchestrator-workers", "metadata": {"run_id": run_id}}
+    with (directory / "trace.jsonl").open("w", encoding="utf-8") as trace:
+        for event in app.stream(initial_state, config=config, stream_mode="updates"):
+            for node, update in event.items():
+                record = {"run_id": run_id, "node": node,
+                          "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                          "plan": update.get("plan"), "eval_result": update.get("eval_result"),
+                          "workers": {name: {"status": result["status"], "attempt": result["attempt"]}
+                                      for name, result in update.get("worker_results", {}).items()},
+                          "termination_reason": update.get("termination_reason")}
+                trace.write(json.dumps(record, ensure_ascii=False) + "\n")
+                trace.flush()
+                print(f"[graph] {node}", flush=True)
+    final_state = app.get_state(config).values
+    (directory / "quality.json").write_text(
+        json.dumps(final_state["eval_result"], ensure_ascii=False, indent=2), encoding="utf-8")
 
     if final_state.get("warnings"):
         print("\n[warnings]")
