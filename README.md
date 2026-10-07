@@ -14,11 +14,6 @@ LLM은 토큰 생성 과정에서 이전 Key·Value를 KV Cache에 저장해 연
 하지만 문맥 길이와 동시 요청이 증가하면 KV Cache가 GPU HBM을 빠르게 점유하면서
 메모리 용량과 데이터 이동이 추론 병목으로 바뀝니다.
 
-Cloud/Data Center Long-context LLM Serving은 긴 문맥과 높은 동시성으로 KV Cache의
-메모리 용량 및 데이터 이동 병목이 크게 나타나는 환경입니다. 또한 KIVI의 소프트웨어
-압축 효과와 ITME의 하드웨어 메모리 확장 효과를 Memory·Latency·Throughput·Quality·
-Infrastructure라는 공통 기준으로 함께 평가할 수 있어 대상 도메인으로 선정했습니다.
-
 | 구분         | KIVI                                      | ITME                                            |
 | ------------ | ----------------------------------------- | ----------------------------------------------- |
 | 해결 계층    | Software                                  | Hardware / Memory System                        |
@@ -78,16 +73,16 @@ Evidence Check의 RAG 재검색 대상에는 포함하지 않습니다.
 
 ## 4. 에이전트 구성
 
-| 에이전트 | RAG | 역할 및 출력 |
-| --- | :---: | --- |
-| 기술 선정 | X | 기본값은 팀의 Human-based 선정값 KIVI·ITME, 필요 시 `auto_select=True`로 후보 풀에서 자동 선정 |
-| 기술 조사 | O | 논문에서 원리·범위·한계·TRL 근거 추출 |
-| 시장 평가 | O | 시장 수요·채택·생태계·경제성·도입 장벽 평가 |
-| 이해관계자 평가 | X | 기술조사 근거로 5개 이해관계자 관점을 평가하고, 직접 근거가 부족한 항목만 Tavily 웹 검색 1회로 보완 |
-| 도메인 평가 | O | Memory·Latency·Throughput·Quality·Infrastructure 평가 |
-| 근거 충분성 Check | X | 기술·시장 결과의 부족 표지와 도메인의 `evidence_gaps`를 규칙으로 검사하고 재검색 여부 결정 |
-| 평가 종합 | X | 관점 간 공통점·상충점·조건부 시사점 도출 |
-| 보고서 생성 | X | 필수 목차·본문 인용을 검증하고, 프로젝트 입력 PDF 전체를 REFERENCE로 생성 |
+| 에이전트          | RAG | 역할 및 출력                                                                                        |
+| ----------------- | :-: | --------------------------------------------------------------------------------------------------- |
+| 기술 선정         |  X  | 기본값은 팀의 Human-based 선정값 KIVI·ITME, 필요 시 `auto_select=True`로 후보 풀에서 자동 선정      |
+| 기술 조사         |  O  | 논문에서 원리·범위·한계·TRL 근거 추출                                                               |
+| 시장 평가         |  O  | 시장 수요·채택·생태계·경제성·도입 장벽 평가                                                         |
+| 이해관계자 평가   |  X  | 기술조사 근거로 5개 이해관계자 관점을 평가하고, 직접 근거가 부족한 항목만 Tavily 웹 검색 1회로 보완 |
+| 도메인 평가       |  O  | Memory·Latency·Throughput·Quality·Infrastructure 평가                                               |
+| 근거 충분성 Check |  X  | 기술·시장 결과의 부족 표지와 도메인의 `evidence_gaps`를 규칙으로 검사하고 재검색 여부 결정          |
+| 평가 종합         |  X  | 관점 간 공통점·상충점·조건부 시사점 도출                                                            |
+| 보고서 생성       |  X  | 필수 목차·본문 인용을 검증하고, 실제 인용된 출처만 REFERENCE로 생성                                 |
 
 ## 5. RAG 설계와 검증
 
@@ -104,16 +99,16 @@ Evidence Check의 RAG 재검색 대상에는 포함하지 않습니다.
 
 ### 인덱싱 문서와 페이지 수
 
-| 용도 | 파일 | 페이지 |
-| --- | --- | ---: |
-| 기술 조사·기술별 평가 | `sw_kivi.pdf` | 15 |
-| 기술 조사·기술별 평가 | `hw_itme.pdf` | 13 |
-| KIVI 시장 평가 | `market_hf_kv_cache.pdf` | 6 |
-| ITME 시장 평가 | `market_micron_amd_cxl_memory_expansion.pdf` | 6 |
-| 도메인 평가 | `PagedAttention.pdf` | 16 |
-| 도메인 평가 | `LongBench.pdf` | 19 |
-| 도메인 평가 | `DistServe.pdf` | 18 |
-| **고유 문서 합계** | **7개 PDF** | **93** |
+| 용도                  | 파일                                         | 페이지 |
+| --------------------- | -------------------------------------------- | -----: |
+| 기술 조사·기술별 평가 | `sw_kivi.pdf`                                |     15 |
+| 기술 조사·기술별 평가 | `hw_itme.pdf`                                |     13 |
+| KIVI 시장 평가        | `market_hf_kv_cache.pdf`                     |      6 |
+| ITME 시장 평가        | `market_micron_amd_cxl_memory_expansion.pdf` |      6 |
+| 도메인 평가           | `PagedAttention.pdf`                         |     16 |
+| 도메인 평가           | `LongBench.pdf`                              |     19 |
+| 도메인 평가           | `DistServe.pdf`                              |     18 |
+| **고유 문서 합계**    | **7개 PDF**                                  | **93** |
 
 현재 데이터 풀은 고유 문서 기준 7개·93쪽으로, 페이지
 절단 없이 전부 인덱싱합니다. 평가 목적별로 인덱스를 분리하기 때문에 KIVI·ITME 원문은
@@ -213,6 +208,7 @@ data/hw_itme.pdf
 data/market_hf_kv_cache.pdf
 data/market_micron_amd_cxl_memory_expansion.pdf
 data/PagedAttention.pdf
+data/DistServe.pdf
 data/LongBench.pdf
 data/DistServe.pdf
 ```
@@ -289,29 +285,11 @@ Retrieval 평가는 수행할 수 없습니다.
 
 ## 11. 팀원 및 담당
 
-| 담당자 | 담당 Agent | 핵심 책임 |
-| --- | --- | --- |
-| 오상현 | 기술 조사 | 원문 근거를 확보하고 기술 원리·적용 범위·한계 추출 |
-| 목진훈 | 시장 평가 | 시장성·상용화 수준·채택 현황 평가 |
-| 오지연 | 이해관계자 평가 | 개발자·경쟁 진영·산업계 등 이해관계자별 시각 분석 |
-| 이은서 | 도메인 평가 | 대상 도메인의 공통 기준에 따라 기술별 적합성 평가 |
-| 이휘호 | 평가 종합 | 관점별 공통점·차이·트레이드오프와 조건부 시사점 종합 |
-| 이민서 | 보고서 생성 | State의 분석 결과와 출처를 검증해 최종 보고서 구성 |
-
-## 12. REFERENCE
-
-**논문**
-
-- Zirui Liu 외(2024). KIVI: A Tuning-Free Asymmetric 2bit Quantization for KV Cache. ICML 2024.
-- Hakbeom Jang 외(2026). ITME: Inference Tiered Memory Expansion with Disaggregated CXL-Hybrid Memories. arXiv preprint.
-
-**도메인 평가 기준 참고 논문**
-
-- Woosuk Kwon 외(2023). Efficient Memory Management for Large Language Model Serving with PagedAttention. arXiv preprint.
-- Yushi Bai 외(2024). LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding. arXiv preprint.
-- Yinmin Zhong 외(2024). DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving. OSDI 2024.
-
-**시장 평가 참고자료**
-
-- Venkata Ravi Shankar Jonnalagadda 외(연도 미상). Optimized for Data Centers: Deployment-ready CXL Memory Expansion with 5th Gen AMD EPYC. Micron·AMD 백서.
-- Hugging Face(연도 미상). KV cache strategies. Transformers 기술 문서.
+| 담당자 | 담당 에이전트         |
+| ------ | --------------------- |
+| 오상현 | 기술 조사 Agent       |
+| 목진훈 | 시장 평가 Agent       |
+| 오지연 | 이해관계자 평가 Agent |
+| 이은서 | 도메인 평가 Agent     |
+| 이휘호 | 평가 종합 Agent       |
+| 이민서 | 보고서 생성 Agent     |
