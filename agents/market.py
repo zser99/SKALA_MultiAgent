@@ -24,13 +24,17 @@ MARKET_FIELDS = (
 
 
 def _format_market_result(result: dict) -> str:
-    parts = [f"{label}: {result.get(key, '확인 불가')}" for label, key in MARKET_FIELDS]
+    parts = [f"{label}: {result.get(key, '추가 검증 필요')}" for label, key in MARKET_FIELDS]
     if result.get("summary"):
         parts.append(f"종합: {result['summary']}")
+    limitations = result.get("limitations") or []
+    if limitations:
+        parts.append("추가 검증 필요:")
+        parts.extend(f"- {item}" for item in limitations if item)
     return "\n".join(parts)
 
 
-def _market_one(candidate: dict, transform: bool = False) -> tuple[str, str]:
+def _market_one(candidate: dict, transform: bool = False) -> tuple[str, str, list[str]]:
     files = [candidate["file"], *candidate.get("market_files", [])]
     vs, _ = build_vectorstore_from_files(f"market_{candidate['id']}", candidate["id"], files)
     context = (
@@ -43,19 +47,28 @@ def _market_one(candidate: dict, transform: bool = False) -> tuple[str, str]:
     prompt = load_prompt("market").format(title=candidate["title"], context=context or "(검색된 발췌 없음)")
     resp = get_llm(temperature=0.3).invoke(prompt)
     result = parse_json_response(resp.content)
-    return _format_market_result(result), result.get("basis", "unknown")
+    return (
+        _format_market_result(result),
+        result.get("basis", "unknown"),
+        result.get("limitations") or [],
+    )
 
 
 def market_node(state: dict) -> dict:
     # 재검색 라운드(retry_count>0)에서는 Query Transformation을 켜고 K를 넓힌다.
     transform = state.get("retry_count", 0) > 0
-    sw_summary, sw_basis = _market_one(state["selected_sw"], transform)
-    hw_summary, hw_basis = _market_one(state["selected_hw"], transform)
+    sw_summary, sw_basis, sw_limitations = _market_one(state["selected_sw"], transform)
+    hw_summary, hw_basis, hw_limitations = _market_one(state["selected_hw"], transform)
     return {
         "market_result": {
             "sw": sw_summary,
             "hw": hw_summary,
-            "sources": [f"sw_basis={sw_basis}", f"hw_basis={hw_basis}"],
+            "limitations": {
+                "sw": sw_limitations,
+                "hw": hw_limitations,
+            },
+            "basis": {"sw": sw_basis, "hw": hw_basis},
+            "sources": [],
         }
     }
 
@@ -73,9 +86,8 @@ def main() -> None:
     print("[market] HW")
     print(result["market_result"]["hw"])
     print()
-    print("[market] sources")
-    for source in result["market_result"]["sources"]:
-        print("-", source)
+    print("[market] basis")
+    print(result["market_result"]["basis"])
 
 
 if __name__ == "__main__":
